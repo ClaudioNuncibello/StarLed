@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "huidu-manager"
+version = "1.0.0"
+description = "Applicazione desktop per la gestione di schermi LED Huidu"
+requires-python = ">=3.11"
+dependencies = [
+    "PyQt6>=6.6.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0.0"]
+dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

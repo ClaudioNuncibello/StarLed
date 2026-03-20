@@ -1,0 +1,46 @@
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ambienti virtuali
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE e Sistemi Operativi
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build e Distribuzione (PyInstaller)
+build/
+dist/
+*.spec
+*.egg-info/
+.eggs/
+
+# File di dati / log del progetto
+# Ignoriamo i JSON creati dall'app ma manteniamo la cartella data/ vuota
+huidu-manager/data/*
+!huidu-manager/data/.keep
+huidu-manager/data/license_cache.json
+huidu-manager/*.log
+
+# Documenti temporanei
+huidu-docs/**/*.tmp
