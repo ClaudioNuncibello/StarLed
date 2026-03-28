@@ -7,6 +7,17 @@ con uno schermo Huidu reale da terminale. Nessun test, nessuna UI.
 
 ## Step 1 — Verifica prerequisiti
 
+- Verifica che il SDK Huidu gateway sia in ascolto:
+  ```cmd
+  netstat -an | findstr 30080
+  ```
+  Se non risponde → avvialo prima di procedere.
+- Il file `.env` deve contenere:
+  ```env
+  HUIDU_GATEWAY_HOST=127.0.0.1
+  HUIDU_GATEWAY_PORT=30080
+  ```
+
 Controlla che TASK-00 sia completato:
 - esiste `app/api/auth_signer.py`
 - esiste `.env` con `HUIDU_SDK_KEY`, `HUIDU_SDK_SECRET`, `HUIDU_GATEWAY_HOST`, `HUIDU_GATEWAY_PORT`
@@ -26,7 +37,9 @@ Implementa `app/api/huidu_client.py`:
 - Logging con `logging`, nessun `print()`
 - Nessun import da `app/ui/`
 
-Verifica: `grep -r "PyQt6" app/api/` → nessun risultato.
+Verifica:
+- bash: `grep -r "PyQt6" app/api/` → nessun risultato.
+- cmd: `findstr /r /s "PyQt6" app\api\*.py` → nessun risultato.
 
 ---
 

@@ -16,6 +16,13 @@ grep -r "PyQt6" app/api/ app/core/ app/auth/
 # deve restituire: nessun risultato
 ```
 
+Equivalente Windows (cmd):
+
+```cmd
+findstr /r /s "PyQt6" app\api\*.py app\core\*.py app\auth\*.py
+REM deve restituire: nessun risultato
+```
+
 ## Dimensione dei file
 
 Se un file supera 200 righe, probabilmente va spezzato in moduli più piccoli.

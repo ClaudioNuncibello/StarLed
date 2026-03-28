@@ -41,6 +41,12 @@ Se qualcosa crasha → correggi prima di procedere.
 grep -r "PyQt6" app/api/ app/core/ app/auth/
 ```
 
+Equivalente Windows (cmd):
+
+```cmd
+findstr /r /s "PyQt6" app\api\*.py app\core\*.py app\auth\*.py
+```
+
 Risultato atteso: nessun output (nessun file importa PyQt6).
 
 Se escono risultati → rimuovi gli import e riesegui il check.

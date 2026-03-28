@@ -2,6 +2,18 @@
 
 Always On — regola strategica che governa l'ordine di sviluppo dell'intero progetto.
 
+## Ambiente di sviluppo
+
+Windows 11 — sviluppo e produzione sullo stesso tipo di macchina.
+Il SDK Huidu gateway è in ascolto su 127.0.0.1:30080.
+Prima di avviare qualsiasi script verificare che il gateway sia attivo:
+
+```cmd
+netstat -an | findstr 30080
+```
+
+Se non restituisce nulla → avviare il Huidu Device SDK Gateway prima di procedere.
+
 ## Regola fondamentale
 
 **PyQt6 non esiste nelle Fasi 0, P e 1.**
@@ -11,7 +23,7 @@ Non importare, non installare, non menzionare PyQt6 in nessun file di `app/api/`
 
 ## Ordine di sviluppo — non negoziabile
 
-```
+```text
 FASE 0  →  Setup e struttura vuota
 FASE P  →  Prototipo rapido: 5 file + cli_test_proto.py
             ↓ validare su hardware reale prima di procedere

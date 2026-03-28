@@ -5,6 +5,18 @@ Garantisce che l'agente parta sempre con il contesto corretto.
 
 ---
 
+## Step 0 — Verifica gateway
+
+Prima di qualsiasi operazione verifica che il SDK Huidu sia attivo:
+
+```cmd
+netstat -an | findstr 30080
+```
+
+Se non restituisce nulla → avvia HuiduGateway.exe prima di procedere.
+
+---
+
 ## Step 1 — Leggi il contesto
 
 Prima di scrivere qualsiasi codice:
@@ -19,7 +31,9 @@ Prima di scrivere qualsiasi codice:
 
 Controlla in TASKS.md qual è il task da implementare e in quale fase si trova.
 
-- Fasi 0, P, 1 → nessun import PyQt6 — verificare con `grep -r "PyQt6" app/api/ app/core/ app/auth/`
+- Fasi 0, P, 1 → nessun import PyQt6 — verificare con:
+  - bash: `grep -r "PyQt6" app/api/ app/core/ app/auth/`
+  - cmd: `findstr /r /s "PyQt6" app\api\*.py app\core\*.py app\auth\*.py`
 - Fase P → nessun test pytest, solo codice funzionante
 - Fase 1 → test obbligatori per ogni modulo
 - Fase 2 → solo dopo il checkpoint superato
@@ -46,6 +60,19 @@ python -m pytest tests/ -v
 
 # Controlla che il file non superi 200 righe
 wc -l <file-implementato>
+```
+
+Equivalenti Windows (cmd):
+
+```cmd
+REM Verifica architettura (Fasi 0, P, 1)
+findstr /r /s "PyQt6" app\api\*.py app\core\*.py app\auth\*.py
+
+REM Esegui i test se siamo in Fase 1 o successiva
+python -m pytest tests/ -v
+
+REM Controlla che il file non superi 200 righe
+find /c /v "" <file-implementato>
 ```
 
 ---
