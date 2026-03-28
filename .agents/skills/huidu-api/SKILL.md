@@ -1,3 +1,8 @@
+---
+name: huidu-api
+description: Specifica completa degli endpoint HTTP del Gateway Huidu SDK (porta 30080). Usare quando si implementa app/api/, si calcola la firma HMAC-MD5, si gestisce l'autenticazione, si inviano comandi ai dispositivi LED, si caricano file media o si costruiscono payload per programmi e presentazioni.
+---
+
 # HUIDU_API.md — Specifica API HTTP Huidu
 
 Questo documento descrive tutti gli endpoint HTTP esposti dal Gateway Huidu SDK (porta 30080).
@@ -20,16 +25,19 @@ Content-Type: application/json
 ```
 
 **Calcolo firma (regola generale):**
+
 ```
 sign = HMAC-MD5(body + sdkKey + date,  sdkSecret)
 ```
 
 **Calcolo firma (solo upload file):**
+
 ```
 sign = HMAC-MD5(sdkKey + date,  sdkSecret)
 ```
 
 Dove:
+
 - `body` = stringa JSON del corpo della richiesta (vuota `""` per richieste GET senza body)
 - `sdkKey` = il tuo SDK Key
 - `sdkSecret` = il tuo SDK Secret (NON viene trasmesso — solo usato per firmare)
@@ -38,6 +46,7 @@ Dove:
 ### Indirizzamento dispositivi
 
 Gli endpoint accettano l'ID del dispositivo in tre modi:
+
 1. Nessun ID → opera sul dispositivo locale: `/api/device/`
 2. Nel path: `/api/device/C16-D23-A0001,C16-D23-A0002`
 3. Come query param: `/api/device/?id=C16-D23-A0001,C16-D23-A0002`
@@ -55,6 +64,7 @@ GET 127.0.0.1:30080/api/device/list/
 ```
 
 Response:
+
 ```json
 {
   "total": "1",
@@ -72,11 +82,13 @@ POST 127.0.0.1:30080/api/device/{id}
 ```
 
 Request body:
+
 ```json
 { "method": "getDeviceProperty", "data": [] }
 ```
 
 Response (campi rilevanti):
+
 ```json
 {
   "method": "getDeviceProperty",
@@ -108,6 +120,7 @@ POST 127.0.0.1:30080/api/device/{id}
 ```
 
 Request body:
+
 ```json
 {
   "method": "setDeviceProperty",
@@ -128,11 +141,13 @@ POST 127.0.0.1:30080/api/device/{id}
 ```
 
 Request body:
+
 ```json
 { "method": "getDeviceStatus", "data": [] }
 ```
 
 Campi rilevanti nella response:
+
 - `screen.openStatus` — `"true"` / `"false"` (schermo acceso/spento)
 - `eth.ip` — IP corrente
 - `wifi.enabled` — Wi-Fi attivo
@@ -142,6 +157,7 @@ Campi rilevanti nella response:
 ### 3.1.5 / 3.1.6 Task pianificati (schermo/volume/luminosità)
 
 **Get:**
+
 ```json
 {
   "method": "getScheduledTask",
@@ -150,6 +166,7 @@ Campi rilevanti nella response:
 ```
 
 **Set:**
+
 ```json
 {
   "method": "setScheduledTask",
@@ -215,6 +232,7 @@ Metodo HTTP: **POST**
 ```
 
 Response:
+
 ```json
 {
   "method": "getAll",
@@ -259,9 +277,11 @@ automaticamente con il boundary corretto per il multipart.
 URL: `127.0.0.1:30080/api/file/{filename}` — il nome del file va nel path.
 
 Request (form-data):
+
 - campo `data`: il file binario con nome e content-type `application/octet-stream`
 
 Response:
+
 ```json
 {
   "data": [{
@@ -322,6 +342,7 @@ url += f"?sdkKey={sdk_key}&date={date}&sign={sign}"
 Metodo HTTP: **GET**
 
 Request body:
+
 ```json
 { "method": "screenshot", "data": {} }
 ```
@@ -353,6 +374,7 @@ Content-Type: application/xml
 `AddFiles` — invio file locali al dispositivo (vedi sotto)
 
 **Esempio body XML:**
+
 ```xml
 <?xml version='1.0' encoding='utf-8'?>
 <sdk guid="##GUID">
@@ -385,6 +407,7 @@ In caso di errore il campo `message` contiene la descrizione dell'errore.
 Il campo `data` per il singolo dispositivo contiene `"kSuccess"` se l'operazione è riuscita.
 
 **Canale XML:** la risposta contiene un attributo `result` nel tag `<out>`:
+
 - `kSuccess` → operazione completata
 - `kDownloading` / `kDownloadingFile` → operazione in corso, ripollare
 - qualsiasi altro valore → errore
@@ -395,10 +418,12 @@ Il campo `data` per il singolo dispositivo contiene `"kSuccess"` se l'operazione
 
 - Tutti i timestamp `date` usano formato RFC 7231 con nomi inglesi fissi
   (non usare `strftime` che dipende dalla locale di sistema):
+
   ```python
   weekdays = ("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
   months = ("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
   ```
+
 - Il `requestId` è un UUID v4 generato per ogni chiamata: `str(uuid.uuid4())`
 - Gli header vanno creati come **dizionario nuovo per ogni chiamata** — mai
   riusare lo stesso dict tra chiamate diverse (rischio race condition con QThread)

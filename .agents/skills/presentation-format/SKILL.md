@@ -1,3 +1,8 @@
+---
+name: presentation-format
+description: Struttura JSON delle presentazioni Huidu (program → area → item). Usare quando si implementa app/core/json_builder.py o app/core/presentation_model.py, si costruisce un payload per /api/program/, o si lavora con item di tipo testo, immagine, video, orologio digitale o testo dinamico.
+---
+
 # PRESENTATION_FORMAT.md — Struttura JSON delle presentazioni
 
 Questo documento descrive il formato JSON delle presentazioni Huidu.
@@ -107,6 +112,7 @@ Presentation (program)
   "effect": "rotate"
 }
 ```
+
 `effect` può essere: `"rotate"`, `"twinkle"`, `"static"`
 
 ---
@@ -238,6 +244,7 @@ Permette di inserire placeholder che vengono aggiornati via `pushStatus`.
 ```
 
 Per aggiornare i valori dinamici si usa `pushStatus`:
+
 ```json
 { "method": "pushStatus", "data": [{ "Temp": "22.5", "Hum": "65" }] }
 ```

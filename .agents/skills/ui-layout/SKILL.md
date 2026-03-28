@@ -1,3 +1,8 @@
+---
+name: ui-layout
+description: Layout e comportamento atteso di ogni componente dell'interfaccia PyQt6 di huidu-manager. Usare quando si implementa qualsiasi file in app/ui/: MainWindow, Toolbar, Sidebar, PreviewArea, LoginDialog, ScreenSettingsDialog. Contiene struttura widget, segnali, stile visivo e convenzioni per i dialog modali.
+---
+
 # UI_LAYOUT.md — Layout e comportamento interfaccia
 
 Questo documento descrive il layout dell'interfaccia e il comportamento atteso
@@ -36,12 +41,14 @@ di ogni componente. È la fonte di verità per implementare `app/ui/`.
 ## MainWindow (`main_window.py`)
 
 ### Responsabilità
+
 - Crea e organizza tutti i widget figli
 - Gestisce il ciclo di vita dell'applicazione
 - Al primo avvio mostra `LoginDialog` prima di tutto
 - Mantiene riferimento al `ScreenManager` e alla lista presentazioni
 
 ### Layout PyQt6
+
 ```python
 # Schema struttura
 QMainWindow
@@ -55,6 +62,7 @@ QMainWindow
 ```
 
 ### Segnali da gestire
+
 - `sidebar.presentation_selected(presentation_id)` → aggiorna preview
 - `sidebar.screen_selected(screen_id)` → aggiorna preview e toolbar
 - `toolbar.send_now_clicked()` → invia presentazione selezionata allo schermo selezionato
@@ -81,6 +89,7 @@ QMainWindow
 | Aggiorna | Ricarica lista schermi dal gateway | Sempre |
 
 ### Segnali emessi
+
 ```python
 new_presentation_requested = pyqtSignal()
 edit_presentation_requested = pyqtSignal(str)      # presentation_uuid
@@ -95,20 +104,24 @@ refresh_screens_requested = pyqtSignal()
 ## Sidebar (`sidebar.py`)
 
 ### Struttura
+
 Due sezioni verticali con `QSplitter` o layout fisso:
 
 **Sezione superiore — Presentazioni**
+
 - `QListWidget` con le presentazioni salvate localmente
 - Ogni item mostra: nome presentazione + icona tipo (testo / immagine / video)
 - Click singolo → seleziona e aggiorna preview
 - Click destro → menu contestuale (Modifica, Duplica, Elimina, Invia ora)
 
 **Sezione inferiore — Schermi**
+
 - `QListWidget` con gli schermi rilevati dal gateway
 - Ogni item mostra: nome schermo + indicatore stato (● verde online, ○ grigio offline)
 - Click singolo → seleziona schermo attivo
 
 ### Segnali emessi
+
 ```python
 presentation_selected = pyqtSignal(str)   # presentation_uuid
 screen_selected = pyqtSignal(str)          # screen_id
@@ -119,10 +132,12 @@ screen_selected = pyqtSignal(str)          # screen_id
 ## PreviewArea (`preview_area.py`)
 
 ### Responsabilità
+
 Mostra un'anteprima semplificata della presentazione selezionata,
 scalata proporzionalmente alle dimensioni dello schermo LED selezionato.
 
 ### Comportamento
+
 - Se nessuna presentazione selezionata → mostra placeholder grigio con testo "Nessuna presentazione selezionata"
 - Se presentazione selezionata → disegna le aree con i contenuti simulati
 - Proporzionale: se lo schermo è 128×64, la preview è scala 4x → 512×256px
@@ -132,6 +147,7 @@ scalata proporzionalmente alle dimensioni dello schermo LED selezionato.
 - Bordo del canvas = colore scuro (simula il corpo fisico dello schermo)
 
 ### Azioni
+
 - Pulsante "Screenshot reale" (se schermo online) → chiama `/api/screenshot/` e mostra immagine reale
 - Label in basso → mostra dimensioni schermo e stato connessione
 
@@ -142,12 +158,14 @@ scalata proporzionalmente alle dimensioni dello schermo LED selezionato.
 Mostrato all'avvio dell'app, modale, non chiudibile con X.
 
 ### Campi
+
 - Campo email (QLineEdit)
 - Pulsante "Accedi"
 - Label stato (messaggio errore o "Verifica in corso...")
 - Link "Contatta il supporto"
 
 ### Flusso
+
 1. Utente inserisce email → click "Accedi"
 2. Mostra spinner / "Verifica in corso..."
 3. Chiama `LicenseClient.verify(mac, email)` in un thread separato (`QThread`)
@@ -164,6 +182,7 @@ Mostrato all'avvio dell'app, modale, non chiudibile con X.
 Dialog per configurare un singolo schermo.
 
 ### Campi
+
 - Nome schermo (modifica `name` via `setDeviceProperty`)
 - Larghezza / Altezza display in pixel (sola lettura — da `getDeviceProperty`)
 - IP Gateway (configurato localmente nell'app, non sul dispositivo)
@@ -194,6 +213,7 @@ Dialog per configurare un singolo schermo.
 ## Dialogs modali — convenzione
 
 Tutti i dialog modali (conferme, impostazioni, editor) devono:
+
 - Essere `QDialog` con `exec()` (non `show()`)
 - Avere pulsanti OK/Annulla con shortcut standard (`Enter` / `Esc`)
 - Restituire il risultato tramite `dialog.result()` o attributi pubblici

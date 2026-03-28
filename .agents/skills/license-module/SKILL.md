@@ -1,3 +1,8 @@
+---
+name: license-module
+description: Interfaccia e implementazione del modulo licenze di huidu-manager. Usare quando si implementa app/auth/, si integra la verifica MAC + email con il server del committente, si gestisce la cache locale del risultato licenza, o si adatta LicenseClient a un nuovo server di licenze.
+---
+
 # LICENSE_MODULE.md — Modulo licenze
 
 Questo documento descrive l'interfaccia del modulo licenze e come adattarlo
@@ -8,6 +13,7 @@ al server del committente una volta noti i dettagli.
 ## Obiettivo
 
 All'avvio dell'app, prima di mostrare l'interfaccia principale, il sistema deve:
+
 1. Leggere l'indirizzo MAC della macchina
 2. Chiedere all'utente l'email (o leggerla dalla cache locale)
 3. Chiamare il server licenze con MAC + email
