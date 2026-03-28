@@ -89,6 +89,7 @@ def main() -> None:
         sdk_key=env["HUIDU_SDK_KEY"],
         sdk_secret=env["HUIDU_SDK_SECRET"],
         timeout=5,  # timeout breve per uso interattivo
+        
     )
     device_api = DeviceApi(client)
     program_api = ProgramApi(client)
