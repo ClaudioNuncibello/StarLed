@@ -14,11 +14,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import TypedDict
 
 logger = logging.getLogger(__name__)
+
+DATE_FORMAT = os.environ.get("HUIDU_DATE_FORMAT", "rfc7231").lower()
 
 
 class HuiduHeaders(TypedDict):
@@ -32,14 +35,23 @@ class HuiduHeaders(TypedDict):
 
 
 def _http_date(dt: datetime | None = None) -> str:
-    """Restituisce la data nel formato RFC 7231 richiesto dall'header ``date``.
+    """Restituisce la data formattata richiesta dall'header ``date``.
+
+    Supporta due formati configurabili tramite DATE_FORMAT (da env):
+    - "rfc7231": Formato HTTP standard (es. Wed, 09 Aug 2023 07:27:44 GMT)
+    - "java": Formato SDK Huidu nativo (es. Sat Mar 28 18:15:00 CET 2026)
 
     Args:
-        dt: Datetime da formattare. Se ``None`` usa l'ora UTC corrente.
+        dt: Datetime da formattare. Se ``None`` usa l'ora corrente.
 
     Returns:
-        Stringa nel formato ``Wed, 09 Aug 2023 07:27:44 GMT``.
+        Stringa formattata.
     """
+    if DATE_FORMAT == "java":
+        if dt is None:
+            dt = datetime.now().astimezone()
+        return dt.strftime('%a %b %d %H:%M:%S %Z %Y')
+
     if dt is None:
         dt = datetime.now(timezone.utc)
     # strftime locale-sensitive — usando valori fissi per i nomi inglesi
