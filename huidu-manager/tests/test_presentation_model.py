@@ -10,10 +10,14 @@ import pytest
 
 from app.core.presentation_model import (
     Area,
+    DigitalClockItem,
     Effect,
     Font,
+    ImageItem,
     Presentation,
     TextItem,
+    VideoItem,
+    item_from_dict,
 )
 
 
@@ -252,3 +256,226 @@ class TestSimpleText:
         item = p.area[0].item[0]
         assert item.font.color == "#ff0000"
         assert item.font.size == 20
+
+
+# ---------------------------------------------------------------------------
+# Test ImageItem — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestImageItem:
+    def test_tipo_impostato_automaticamente(self) -> None:
+        item = ImageItem(file="img.png", fileMd5="abc", fileSize=1024)
+        assert item.type == "image"
+
+    def test_to_dict_chiavi(self) -> None:
+        item = ImageItem(file="img.png", fileMd5="abc", fileSize=1024)
+        d = item.to_dict()
+        assert set(d.keys()) == {"type", "file", "fileMd5", "fileSize", "fit", "effect"}
+        assert d["type"] == "image"
+        assert d["fit"] == "stretch"
+
+    def test_fit_values(self) -> None:
+        for fit in ["fill", "center", "stretch", "tile"]:
+            item = ImageItem(file="img.png", fileMd5="abc", fileSize=100, fit=fit)
+            assert item.to_dict()["fit"] == fit
+
+    def test_roundtrip_to_from_dict(self) -> None:
+        original = ImageItem(
+            file="http://example.com/img.png",
+            fileMd5="abc123",
+            fileSize=2048,
+            fit="center",
+            effect=Effect(type=17, speed=3, hold=1000),
+        )
+        rebuilt = ImageItem.from_dict(original.to_dict())
+        assert rebuilt.file == original.file
+        assert rebuilt.fileMd5 == original.fileMd5
+        assert rebuilt.fileSize == original.fileSize
+        assert rebuilt.fit == original.fit
+        assert rebuilt.effect.type == original.effect.type
+
+
+# ---------------------------------------------------------------------------
+# Test VideoItem — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestVideoItem:
+    def test_tipo_impostato_automaticamente(self) -> None:
+        item = VideoItem(file="vid.mp4", fileMd5="def", fileSize=10000)
+        assert item.type == "video"
+
+    def test_to_dict_chiavi(self) -> None:
+        item = VideoItem(file="vid.mp4", fileMd5="def", fileSize=10000)
+        d = item.to_dict()
+        assert set(d.keys()) == {"type", "file", "fileMd5", "fileSize", "aspectRatio", "effect"}
+
+    def test_aspect_ratio_default_false(self) -> None:
+        item = VideoItem(file="vid.mp4", fileMd5="def", fileSize=10000)
+        assert item.aspectRatio is False
+
+    def test_roundtrip_to_from_dict(self) -> None:
+        original = VideoItem(
+            file="http://example.com/vid.mp4",
+            fileMd5="xyz789",
+            fileSize=50000,
+            aspectRatio=True,
+            effect=Effect(type=0, speed=5, hold=3000),
+        )
+        rebuilt = VideoItem.from_dict(original.to_dict())
+        assert rebuilt.file == original.file
+        assert rebuilt.aspectRatio is True
+        assert rebuilt.effect.hold == 3000
+
+
+# ---------------------------------------------------------------------------
+# Test DigitalClockItem — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestDigitalClockItem:
+    def test_tipo_impostato_automaticamente(self) -> None:
+        item = DigitalClockItem()
+        assert item.type == "digitalClock"
+
+    def test_to_dict_chiavi(self) -> None:
+        d = DigitalClockItem().to_dict()
+        assert set(d.keys()) == {"type", "timezone", "multiLine", "date", "time", "week"}
+
+    def test_valori_default(self) -> None:
+        item = DigitalClockItem()
+        assert item.timezone == "+1:00"
+        assert item.multiLine is True
+        assert item.date["display"] == "true"
+
+    def test_roundtrip_to_from_dict(self) -> None:
+        original = DigitalClockItem(
+            timezone="+2:00",
+            multiLine=False,
+            date={"format": 1, "color": "#ff0000", "display": "true"},
+        )
+        rebuilt = DigitalClockItem.from_dict(original.to_dict())
+        assert rebuilt.timezone == "+2:00"
+        assert rebuilt.multiLine is False
+        assert rebuilt.date["color"] == "#ff0000"
+
+
+# ---------------------------------------------------------------------------
+# Test item_from_dict dispatcher — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestItemFromDict:
+    def test_dispatch_text(self) -> None:
+        item = item_from_dict({"type": "text", "string": "hello"})
+        assert isinstance(item, TextItem)
+        assert item.string == "hello"
+
+    def test_dispatch_image(self) -> None:
+        item = item_from_dict({"type": "image", "file": "img.png", "fileMd5": "", "fileSize": 0})
+        assert isinstance(item, ImageItem)
+
+    def test_dispatch_video(self) -> None:
+        item = item_from_dict({"type": "video", "file": "vid.mp4", "fileMd5": "", "fileSize": 0})
+        assert isinstance(item, VideoItem)
+
+    def test_dispatch_digital_clock(self) -> None:
+        item = item_from_dict({"type": "digitalClock"})
+        assert isinstance(item, DigitalClockItem)
+
+    def test_tipo_sconosciuto_solleva(self) -> None:
+        import pytest
+        with pytest.raises(ValueError, match="sconosciuto"):
+            item_from_dict({"type": "unknown"})
+
+    def test_tipo_mancante_solleva(self) -> None:
+        import pytest
+        with pytest.raises(ValueError, match="sconosciuto"):
+            item_from_dict({})
+
+
+# ---------------------------------------------------------------------------
+# Test from_dict roundtrip completi — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestFromDictRoundtrip:
+    def test_effect_roundtrip(self) -> None:
+        e = Effect(type=17, speed=2, hold=999)
+        assert Effect.from_dict(e.to_dict()).type == 17
+
+    def test_font_roundtrip(self) -> None:
+        f = Font(name="Courier", size=20, bold=True, color="#00ff00")
+        rebuilt = Font.from_dict(f.to_dict())
+        assert rebuilt.name == "Courier"
+        assert rebuilt.bold is True
+
+    def test_text_item_roundtrip(self) -> None:
+        t = TextItem(string="Ciao", alignment="left", PlayText=True)
+        rebuilt = TextItem.from_dict(t.to_dict())
+        assert rebuilt.string == "Ciao"
+        assert rebuilt.alignment == "left"
+        assert rebuilt.PlayText is True
+
+    def test_area_roundtrip(self) -> None:
+        a = Area(x=10, y=20, width=100, height=50, item=[TextItem(string="X")])
+        rebuilt = Area.from_dict(a.to_dict())
+        assert rebuilt.x == 10
+        assert rebuilt.width == 100
+        assert len(rebuilt.item) == 1
+        assert isinstance(rebuilt.item[0], TextItem)
+
+    def test_area_con_image_item(self) -> None:
+        a = Area(
+            x=0, y=0, width=128, height=64,
+            item=[ImageItem(file="img.png", fileMd5="abc", fileSize=1024)],
+        )
+        rebuilt = Area.from_dict(a.to_dict())
+        assert isinstance(rebuilt.item[0], ImageItem)
+
+    def test_presentation_roundtrip(self) -> None:
+        p = Presentation.simple_text("Demo", "Hello")
+        d = p.to_dict()
+        rebuilt = Presentation.from_dict(d)
+        assert rebuilt.name == "Demo"
+        assert rebuilt.uuid == p.uuid
+        assert len(rebuilt.area) == 1
+        assert isinstance(rebuilt.area[0].item[0], TextItem)
+
+    def test_presentation_con_play_control(self) -> None:
+        p = Presentation(
+            name="Pianificata",
+            area=[Area(x=0, y=0, width=128, height=64, item=[TextItem(string="Y")])],
+            play_control={"duration": "00:00:30"},
+        )
+        rebuilt = Presentation.from_dict(p.to_dict())
+        assert rebuilt.play_control == {"duration": "00:00:30"}
+
+
+# ---------------------------------------------------------------------------
+# Test Presentation.simple_image — TASK-02
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleImage:
+    def test_crea_presentazione_immagine(self) -> None:
+        p = Presentation.simple_image(
+            "Test Img", "http://img.png", "abc", 1024,
+            screen_width=256, screen_height=128,
+        )
+        assert len(p.area) == 1
+        assert isinstance(p.area[0].item[0], ImageItem)
+
+    def test_dimensioni_area(self) -> None:
+        p = Presentation.simple_image(
+            "Test", "url", "md5", 500,
+            screen_width=200, screen_height=100,
+        )
+        assert p.area[0].width == 200
+        assert p.area[0].height == 100
+
+    def test_to_dict_valido(self) -> None:
+        p = Presentation.simple_image("V", "url", "md5", 500)
+        d = p.to_dict()
+        assert d["area"][0]["item"][0]["type"] == "image"

@@ -259,3 +259,233 @@ class TestSendPresentation:
         }
         with pytest.raises(HuiduApiError):
             program_api.send_presentation(DEVICE_ID, simple_presentation)
+
+
+# ---------------------------------------------------------------------------
+# Test DeviceApi.get_device_property — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestGetDeviceProperty:
+    def test_estrae_dimensioni_e_ip(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [
+                {
+                    "id": DEVICE_ID,
+                    "message": "ok",
+                    "data": {
+                        "name": "LED-01",
+                        "screen.width": "128",
+                        "screen.height": "64",
+                        "eth.ip": "192.168.1.50",
+                        "version.app": "1.2.3",
+                        "volume": "80",
+                        "luminance": "70",
+                    },
+                }
+            ]
+        }
+        result = device_api.get_device_property(DEVICE_ID)
+        assert result["screen.width"] == "128"
+        assert result["screen.height"] == "64"
+        assert result["eth.ip"] == "192.168.1.50"
+        assert result["name"] == "LED-01"
+
+    def test_endpoint_e_method_corretti(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {"data": [{"message": "ok", "data": {}}]}
+        device_api.get_device_property(DEVICE_ID)
+        mock_client.post.assert_called_once_with(
+            f"/api/device/{DEVICE_ID}",
+            {"method": "getDeviceProperty", "data": []},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test DeviceApi.set_device_property — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestSetDeviceProperty:
+    def test_imposta_volume_luminosita(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {"data": [{"message": "ok", "data": {}}]}
+        result = device_api.set_device_property(
+            DEVICE_ID, volume="80", luminance="70"
+        )
+        assert result is True
+        call_args = mock_client.post.call_args
+        payload = call_args[0][1]
+        assert payload["method"] == "setDeviceProperty"
+        assert payload["data"]["volume"] == "80"
+        assert payload["data"]["luminance"] == "70"
+
+    def test_nessuna_proprieta_solleva(self, device_api: DeviceApi) -> None:
+        with pytest.raises(ValueError, match="proprietà"):
+            device_api.set_device_property(DEVICE_ID)
+
+
+# ---------------------------------------------------------------------------
+# Test DeviceApi.reboot_device — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestRebootDevice:
+    def test_delay_nel_payload(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {"data": [{"message": "ok", "data": {}}]}
+        device_api.reboot_device(DEVICE_ID, delay=10)
+        payload = mock_client.post.call_args[0][1]
+        assert payload["method"] == "rebootDevice"
+        assert payload["data"]["delay"] == 10
+
+    def test_delay_default(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {"data": [{"message": "ok", "data": {}}]}
+        device_api.reboot_device(DEVICE_ID)
+        payload = mock_client.post.call_args[0][1]
+        assert payload["data"]["delay"] == 5
+
+
+# ---------------------------------------------------------------------------
+# Test DeviceApi.get_scheduled_task — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestGetScheduledTask:
+    def test_categorie_default(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"message": "ok", "data": {"screen": [], "volume": [], "luminance": []}}]
+        }
+        device_api.get_scheduled_task(DEVICE_ID)
+        payload = mock_client.post.call_args[0][1]
+        assert payload["data"] == ["screen", "volume", "luminance"]
+
+    def test_categorie_custom(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"message": "ok", "data": {"screen": []}}]
+        }
+        device_api.get_scheduled_task(DEVICE_ID, categories=["screen"])
+        payload = mock_client.post.call_args[0][1]
+        assert payload["data"] == ["screen"]
+
+
+# ---------------------------------------------------------------------------
+# Test DeviceApi.set_scheduled_task — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestSetScheduledTask:
+    def test_struttura_payload(
+        self, device_api: DeviceApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {"data": [{"message": "ok", "data": {}}]}
+        tasks = {
+            "screen": [{"timeRange": "00:00:00~06:00:00", "data": "false"}],
+        }
+        result = device_api.set_scheduled_task(DEVICE_ID, tasks)
+        assert result is True
+        payload = mock_client.post.call_args[0][1]
+        assert payload["method"] == "setScheduledTask"
+        assert payload["data"] == tasks
+
+
+# ---------------------------------------------------------------------------
+# Test ProgramApi.get_programs — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestGetPrograms:
+    def test_lista_programmi(
+        self, program_api: ProgramApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [
+                {
+                    "id": DEVICE_ID,
+                    "message": "ok",
+                    "data": {
+                        "item": [
+                            {"uuid": "ABC-123", "name": "Promo Estate"},
+                            {"uuid": "DEF-456", "name": "Orario"},
+                        ]
+                    },
+                }
+            ]
+        }
+        result = program_api.get_programs(DEVICE_ID)
+        assert len(result) == 2
+        assert result[0]["uuid"] == "ABC-123"
+
+    def test_nessun_programma(
+        self, program_api: ProgramApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"id": DEVICE_ID, "message": "ok", "data": {"item": []}}]
+        }
+        result = program_api.get_programs(DEVICE_ID)
+        assert result == []
+
+    def test_verifica_method_getAll(
+        self, program_api: ProgramApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"id": DEVICE_ID, "message": "ok", "data": {"item": []}}]
+        }
+        program_api.get_programs(DEVICE_ID)
+        payload = mock_client.post.call_args[0][1]
+        assert payload["method"] == "getAll"
+
+
+# ---------------------------------------------------------------------------
+# Test ProgramApi.append_presentation — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestAppendPresentation:
+    def test_method_append(
+        self, program_api: ProgramApi, mock_client: MagicMock, simple_presentation: Presentation
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"id": DEVICE_ID, "message": "ok"}]
+        }
+        result = program_api.append_presentation(DEVICE_ID, simple_presentation)
+        assert result is True
+        payload = mock_client.post.call_args[0][1]
+        assert payload["method"] == "append"
+
+
+# ---------------------------------------------------------------------------
+# Test ProgramApi.remove_presentation — TASK-04
+# ---------------------------------------------------------------------------
+
+
+class TestRemovePresentation:
+    def test_rimozione_uuid(
+        self, program_api: ProgramApi, mock_client: MagicMock
+    ) -> None:
+        mock_client.post.return_value = {
+            "data": [{"id": DEVICE_ID, "message": "ok"}]
+        }
+        uuids = ["ABC-123", "DEF-456"]
+        result = program_api.remove_presentation(DEVICE_ID, uuids)
+        assert result is True
+        payload = mock_client.post.call_args[0][1]
+        assert payload["method"] == "remove"
+        assert len(payload["data"]) == 2
+        assert payload["data"][0]["uuid"] == "ABC-123"
+
+    def test_lista_vuota_solleva(self, program_api: ProgramApi) -> None:
+        with pytest.raises(ValueError, match="UUID"):
+            program_api.remove_presentation(DEVICE_ID, [])
+
