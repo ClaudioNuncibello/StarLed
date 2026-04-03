@@ -24,7 +24,7 @@ from app.api.program_api import ProgramApi
 from app.auth.license_client import LicenseClient
 from app.auth.mac_helper import get_mac_address
 from app.core.file_uploader import FileUploader
-from app.core.presentation_model import Presentation
+from app.core.presentation_model import Area, Effect, Font, Presentation, TextItem
 from app.core.screen_manager import ScreenManager
 
 
@@ -156,10 +156,44 @@ def main() -> None:
                 testo = input("Testo da inviare [default: 'Hello LED']: ").strip()
                 if not testo:
                     testo = "Hello LED"
-                print(f"Invio presentazione a {dev}...")
-                pres = Presentation.simple_text("Demo CLI", testo, effect_type=1)
+                
+                fsize = input("  Dimensione font (pt) [default: 14]: ").strip()
+                fsize = int(fsize) if fsize.isdigit() else 14
+                
+                color = input("  Colore esadecimale [default: #ffffff]: ").strip() or "#ffffff"
+                
+                align = input("  Allineamento (left, center, right) [default: center]: ").strip() or "center"
+                
+                effect_type = input("  Tipo effetto (0=fisso, 1=scorri sx, 25=casuale) [default: 1]: ").strip()
+                effect_type = int(effect_type) if effect_type.isdigit() else 1
+
+                speed = input("  Velocità (0=veloce, 8=lento) [default: 3]: ").strip()
+                speed = int(speed) if speed.isdigit() else 3
+                
+                valign = input("  Allineamento verticale (top, middle, bottom) [default: middle]: ").strip() or "middle"
+
+                print(f"Lettura dimensioni schermo di {dev}...")
+                props = device_api.get_device_property(dev)
+                w = int(props.get("screen.width", 128))
+                h = int(props.get("screen.height", 64))
+
+                print(f"Invio presentazione avanzata a {dev} ({w}x{h})...")
+                
+                # Creazione granulare del testo
+                text_item = TextItem(
+                    string=testo,
+                    font=Font(size=fsize, color=color),
+                    alignment=align,
+                    valignment=valign,
+                    effect=Effect(type=effect_type, speed=speed),
+                )
+                
+                # Inserimento esplicito in un'area
+                area = Area(x=0, y=0, width=w, height=h, item=[text_item])
+                pres = Presentation(name="Demo Avanzata", area=[area])
+
                 program_api.send_presentation(dev, pres)
-                print(f"✓ Presentazione '{testo}' inviata con successo.")
+                print(f"✓ Presentazione testuale inviata con successo.")
 
             elif scelta == "4":
                 dev = prompt_device_id(known_devices)
