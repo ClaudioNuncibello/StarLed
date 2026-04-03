@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="UTF-8"><title>SLPlayer — Login e Impostazioni schermo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+  body { background: #111; padding: 24px; display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .panel { background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden; }
+  .panel-title { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 14px; border-bottom: 1px solid #1a1a1a; background: #161616; }
+
+  /* LOGIN */
+  .login-wrap { padding: 28px 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 18px; width: 260px; }
+  .logo-mark { width: 44px; height: 44px; border-radius: 8px; background: #e07820; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; font-weight: 600; }
+  .login-title { font-size: 15px; color: #ddd; font-weight: 500; }
+  .login-sub { font-size: 12px; color: #666; text-align: center; line-height: 1.5; }
+  .field-wrap { width: 100%; display: flex; flex-direction: column; gap: 5px; }
+  .field-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.06em; }
+  .field-input { width: 100%; background: #111; border: 1px solid #333; border-radius: 5px; color: #ddd; font-size: 13px; padding: 8px 10px; outline: none; }
+  .field-input:focus { border-color: #e07820; }
+  .spinner-wrap { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; }
+  .spinner { width: 14px; height: 14px; border: 2px solid #333; border-top-color: #e07820; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-accedi { width: 100%; background: #e07820; border: none; border-radius: 5px; color: #fff; font-size: 13px; font-weight: 500; padding: 9px; cursor: pointer; opacity: 0.5; }
+  .login-footer { font-size: 11px; color: #444; }
+
+  /* SETTINGS */
+  .sett-wrap { padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; width: 300px; }
+  .sett-device { display: flex; align-items: center; gap: 8px; }
+  .dot-on { width: 8px; height: 8px; border-radius: 50%; background: #e07820; flex-shrink: 0; }
+  .device-name { font-size: 13px; color: #ddd; font-weight: 500; }
+  .device-fw { font-size: 11px; color: #555; }
+  .sep { height: 1px; background: #2a2a2a; }
+  .slider-row { display: flex; flex-direction: column; gap: 5px; }
+  .slider-header { display: flex; justify-content: space-between; font-size: 11px; color: #888; }
+  .slider-val { color: #e07820; }
+  input[type=range] { width: 100%; accent-color: #e07820; }
+  .act-grid { display: flex; flex-direction: column; gap: 6px; }
+  .act-row { display: flex; gap: 8px; }
+  .act-btn { flex: 1; background: transparent; border: 1px solid #333; border-radius: 5px; color: #aaa; font-size: 12px; padding: 7px 0; cursor: pointer; text-align: center; }
+  .act-btn:hover { background: #2a2a2a; }
+  .act-btn.warning { border-color: #e07820; color: #e07820; }
+  .act-btn.warning:hover { background: rgba(224,120,32,0.08); }
+  .act-btn.danger { border-color: #6a2020; color: #c05050; }
+  .act-btn.danger:hover { background: rgba(192,80,80,0.08); }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+  .info-row { display: flex; justify-content: space-between; font-size: 11px; }
+  .info-k { color: #555; }
+  .info-v { color: #888; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="panel">
+  <div class="panel-title">LoginDialog — avvio app</div>
+  <div class="login-wrap">
+    <div class="logo-mark">S</div>
+    <div style="text-align:center;display:flex;flex-direction:column;gap:4px;">
+      <div class="login-title">SLPlayer</div>
+      <div class="login-sub">Inserisci l'email registrata<br>per attivare la licenza</div>
+    </div>
+    <div class="field-wrap">
+      <div class="field-label">Email</div>
+      <input class="field-input" type="text" value="cliente@esempio.it">
+    </div>
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <span>Verifica in corso...</span>
+    </div>
+    <button class="btn-accedi">Accedi</button>
+    <div class="login-footer">Starled Italia s.r.l.s</div>
+  </div>
+</div>
+
+<!-- SCREEN SETTINGS -->
+<div class="panel">
+  <div class="panel-title">ScreenSettingsDialog</div>
+  <div class="sett-wrap">
+    <div class="sett-device">
+      <div class="dot-on"></div>
+      <div>
+        <div class="device-name">A3L-D24-A05C1</div>
+        <div class="device-fw">Firmware 2.12.8.0</div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="slider-row">
+      <div class="slider-header"><span>Luminosità</span><span class="slider-val" id="lum-val">80%</span></div>
+      <input type="range" min="0" max="100" value="80" oninput="document.getElementById('lum-val').textContent=this.value+'%'">
+    </div>
+    <div class="slider-row">
+      <div class="slider-header"><span>Volume</span><span class="slider-val" id="vol-val">60%</span></div>
+      <input type="range" min="0" max="100" value="60" oninput="document.getElementById('vol-val').textContent=this.value+'%'">
+    </div>
+    <div class="sep"></div>
+    <div class="act-grid">
+      <div class="act-row">
+        <div class="act-btn warning">⏻ Accendi schermo</div>
+        <div class="act-btn">◻ Spegni schermo</div>
+      </div>
+      <div class="act-btn danger">↺ Riavvia dispositivo</div>
+    </div>
+    <div class="sep"></div>
+    <div class="info-grid">
+      <div class="info-row"><span class="info-k">IP</span><span class="info-v">192.168.1.101</span></div>
+      <div class="info-row"><span class="info-k">Larghezza</span><span class="info-v">160 px</span></div>
+      <div class="info-row"><span class="info-k">Hardware</span><span class="info-v">HD-A3L</span></div>
+      <div class="info-row"><span class="info-k">Altezza</span><span class="info-v">80 px</span></div>
+    </div>
+  </div>
+</div>
+
+</body></html>

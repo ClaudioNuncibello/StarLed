@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="UTF-8"><title>SLPlayer — Dialog contenuto mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+  body { background: #111; padding: 24px; color: #ccc; }
+  h1 { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+  .tabs { display: flex; border-bottom: 1px solid #2a2a2a; background: #161616; padding: 0 8px; gap: 2px; margin-bottom: 16px; }
+  .tab { font-size: 12px; padding: 8px 16px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: #e07820; border-bottom-color: #e07820; }
+  .dlg { display: none; }
+  .dlg.active { display: block; }
+  .dialog-panel { background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden; max-width: 420px; }
+  .dialog-titlebar { background: #161616; padding: 10px 14px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
+  .dialog-title { font-size: 13px; color: #ccc; font-weight: 500; }
+  .dialog-close { color: #555; font-size: 14px; cursor: pointer; }
+  .dialog-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .field-group { display: flex; flex-direction: column; gap: 5px; }
+  .field-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.06em; }
+  .field-row { display: flex; gap: 8px; align-items: center; }
+  .field-input { background: #111; border: 1px solid #333; border-radius: 4px; color: #ccc; font-size: 12px; padding: 6px 8px; width: 100%; outline: none; }
+  .field-select { background: #111; border: 1px solid #333; border-radius: 4px; color: #ccc; font-size: 12px; padding: 6px 8px; outline: none; width: 100%; }
+  .field-input:focus, .field-select:focus { border-color: #e07820; }
+  .file-pick { background: #111; border: 1px solid #333; border-radius: 4px; color: #888; font-size: 11px; padding: 6px 8px; flex: 1; }
+  .file-btn { background: transparent; border: 1px solid #3a3a3a; border-radius: 4px; color: #aaa; font-size: 11px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+  .file-btn:hover { background: #2a2a2a; }
+  .color-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #444; flex-shrink: 0; cursor: pointer; }
+  .toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggle-btn { background: #111; border: 1px solid #333; border-radius: 4px; color: #888; font-size: 11px; padding: 5px 10px; cursor: pointer; }
+  .toggle-btn.on { background: rgba(224,120,32,0.15); border-color: #e07820; color: #e07820; }
+  .effect-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .range-wrap { display: flex; align-items: center; gap: 8px; }
+  .range-wrap input[type=range] { flex: 1; accent-color: #e07820; }
+  .range-val { font-size: 11px; color: #e07820; min-width: 20px; text-align: right; }
+  .sep { height: 1px; background: #2a2a2a; }
+  .dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #222; }
+  .btn-cancel { background: transparent; border: 1px solid #333; border-radius: 5px; color: #888; font-size: 12px; padding: 6px 16px; cursor: pointer; }
+  .btn-ok { background: #e07820; border: none; border-radius: 5px; color: #fff; font-size: 12px; padding: 6px 16px; cursor: pointer; font-weight: 500; }
+  .font-row { display: grid; grid-template-columns: 1fr 52px 28px auto; gap: 6px; align-items: center; }
+  .clock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .clock-item { display: flex; flex-direction: column; gap: 5px; }
+  textarea.field-input { resize: none; }
+</style>
+</head>
+<body>
+<h1>SLPlayer — Dialog contenuto</h1>
+<div class="tabs">
+  <div class="tab active" onclick="show('img',this)">🖼 Immagine</div>
+  <div class="tab" onclick="show('vid',this)">▶ Video</div>
+  <div class="tab" onclick="show('txt',this)">T Testo</div>
+  <div class="tab" onclick="show('clk',this)">🕐 Orologio</div>
+</div>
+
+<!-- IMMAGINE -->
+<div class="dlg active" id="dlg-img">
+  <div class="dialog-panel">
+    <div class="dialog-titlebar"><span class="dialog-title">🖼 Nuova immagine</span><span class="dialog-close">✕</span></div>
+    <div class="dialog-body">
+      <div class="field-group">
+        <div class="field-label">File immagine (jpg, png, bmp, gif)</div>
+        <div class="field-row"><div class="file-pick">banner_primavera.png</div><button class="file-btn">Sfoglia...</button></div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Adattamento</div>
+        <select class="field-select">
+          <option>Stretch — riempie (può deformare)</option>
+          <option>Fill — proporzionale + crop</option>
+          <option>Center — proporzionale con bande nere</option>
+          <option>Tile — tiling</option>
+        </select>
+      </div>
+      <div class="sep"></div>
+      <div class="field-label">Effetto transizione</div>
+      <div class="effect-grid">
+        <div class="field-group">
+          <div class="field-label">Tipo</div>
+          <select class="field-select">
+            <option>0 — Diretto</option><option>1 — Scorrimento sx</option>
+            <option>2 — Scorrimento dx</option><option>17 — Dissolvenza</option><option>25 — Casuale</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Velocità (0=max, 8=min)</div>
+          <div class="range-wrap"><input type="range" min="0" max="8" value="5"><span class="range-val">5</span></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Durata visualizzazione (ms)</div>
+        <input class="field-input" type="number" value="5000" min="0" max="9999999">
+      </div>
+    </div>
+    <div class="dialog-footer"><button class="btn-cancel">Annulla</button><button class="btn-ok">Aggiungi livello</button></div>
+  </div>
+</div>
+
+<!-- VIDEO -->
+<div class="dlg" id="dlg-vid">
+  <div class="dialog-panel">
+    <div class="dialog-titlebar"><span class="dialog-title">▶ Nuovo video</span><span class="dialog-close">✕</span></div>
+    <div class="dialog-body">
+      <div class="field-group">
+        <div class="field-label">File video (mp4, avi, mkv, mov)</div>
+        <div class="field-row"><div class="file-pick">spot_30sec.mp4</div><button class="file-btn">Sfoglia...</button></div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Opzioni</div>
+        <div class="toggle-row"><button class="toggle-btn">Mantieni proporzioni</button></div>
+      </div>
+      <div class="sep"></div>
+      <div class="field-label">Effetto transizione</div>
+      <div class="effect-grid">
+        <div class="field-group">
+          <div class="field-label">Tipo</div>
+          <select class="field-select">
+            <option>0 — Diretto</option><option>1 — Scorrimento sx</option>
+            <option>17 — Dissolvenza</option><option>25 — Casuale</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Velocità (0=max, 8=min)</div>
+          <div class="range-wrap"><input type="range" min="0" max="8" value="5"><span class="range-val">5</span></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Durata visualizzazione (ms)</div>
+        <input class="field-input" type="number" value="5000" min="0" max="9999999">
+      </div>
+    </div>
+    <div class="dialog-footer"><button class="btn-cancel">Annulla</button><button class="btn-ok">Aggiungi livello</button></div>
+  </div>
+</div>
+
+<!-- TESTO -->
+<div class="dlg" id="dlg-txt">
+  <div class="dialog-panel" style="max-width:440px;">
+    <div class="dialog-titlebar"><span class="dialog-title">T Nuovo testo</span><span class="dialog-close">✕</span></div>
+    <div class="dialog-body">
+      <div class="field-group">
+        <div class="field-label">Testo</div>
+        <textarea class="field-input" rows="2">Offerta speciale primavera!</textarea>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Font</div>
+        <div class="font-row">
+          <select class="field-select"><option>Arial</option><option>宋体</option><option>FZLanTingHei</option></select>
+          <input class="field-input" type="number" value="14" style="width:52px;">
+          <div class="color-swatch" style="background:#ffff00;"></div>
+          <div class="toggle-row" style="gap:4px;">
+            <button class="toggle-btn on" style="padding:4px 8px;font-weight:700;">B</button>
+            <button class="toggle-btn" style="padding:4px 8px;font-style:italic;">I</button>
+            <button class="toggle-btn" style="padding:4px 8px;text-decoration:underline;">U</button>
+          </div>
+        </div>
+      </div>
+      <div class="effect-grid">
+        <div class="field-group">
+          <div class="field-label">Allineamento orizzontale</div>
+          <select class="field-select"><option>Centro</option><option>Sinistra</option><option>Destra</option></select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Allineamento verticale</div>
+          <select class="field-select"><option>Centro</option><option>Alto</option><option>Basso</option></select>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <button class="toggle-btn">Testo multiriga</button>
+        <button class="toggle-btn">Lettura vocale TTS</button>
+      </div>
+      <div class="sep"></div>
+      <div class="field-label">Effetto transizione</div>
+      <div class="effect-grid">
+        <div class="field-group">
+          <div class="field-label">Tipo</div>
+          <select class="field-select">
+            <option>0 — Diretto</option><option>1 — Scorrimento sx</option>
+            <option>17 — Dissolvenza</option><option selected>26 — Scorr. continuo sx</option>
+            <option>27 — Scorr. continuo dx</option><option>30 — Lampeggio</option><option>25 — Casuale</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Velocità (0=max, 8=min)</div>
+          <div class="range-wrap"><input type="range" min="0" max="8" value="3"><span class="range-val">3</span></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Durata visualizzazione (ms)</div>
+        <input class="field-input" type="number" value="5000" min="0" max="9999999">
+      </div>
+    </div>
+    <div class="dialog-footer"><button class="btn-cancel">Annulla</button><button class="btn-ok">Aggiungi livello</button></div>
+  </div>
+</div>
+
+<!-- OROLOGIO -->
+<div class="dlg" id="dlg-clk">
+  <div class="dialog-panel" style="max-width:440px;">
+    <div class="dialog-titlebar"><span class="dialog-title">🕐 Nuovo orologio</span><span class="dialog-close">✕</span></div>
+    <div class="dialog-body">
+      <div class="field-group">
+        <div class="field-label">Tipo orologio</div>
+        <div class="toggle-row">
+          <button class="toggle-btn on" onclick="setClockType('digital',this)">Digitale</button>
+          <button class="toggle-btn" onclick="setClockType('analog',this)">Analogico</button>
+        </div>
+      </div>
+      <div class="effect-grid">
+        <div class="field-group">
+          <div class="field-label">Fuso orario</div>
+          <select class="field-select"><option>+1:00 (Roma)</option><option>+0:00 (UTC)</option><option>+8:00 (Shanghai)</option></select>
+        </div>
+        <div class="field-group" id="multiline-field">
+          <div class="field-label">Multiriga</div>
+          <div class="toggle-row"><button class="toggle-btn on">Sì</button><button class="toggle-btn">No</button></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <!-- Digitale -->
+      <div id="digital-fields">
+        <div class="field-label" style="margin-bottom:8px;">Elementi visualizzati</div>
+        <div class="clock-grid">
+          <div class="clock-item">
+            <div class="field-label">Data</div>
+            <div class="field-row" style="gap:5px;">
+              <button class="toggle-btn on" style="font-size:10px;padding:3px 7px;">Visibile</button>
+              <select class="field-select" style="font-size:10px;">
+                <option>GG/MM/AAAA</option><option>MM/GG/AAAA</option><option>AAAA/MM/GG</option>
+              </select>
+              <div class="color-swatch" style="background:#ffffff;width:22px;height:22px;"></div>
+            </div>
+          </div>
+          <div class="clock-item">
+            <div class="field-label">Ora</div>
+            <div class="field-row" style="gap:5px;">
+              <button class="toggle-btn on" style="font-size:10px;padding:3px 7px;">Visibile</button>
+              <select class="field-select" style="font-size:10px;">
+                <option>hh:mm:ss</option><option>hh:mm</option>
+              </select>
+              <div class="color-swatch" style="background:#00ff00;width:22px;height:22px;"></div>
+            </div>
+          </div>
+          <div class="clock-item">
+            <div class="field-label">Giorno settimana</div>
+            <div class="field-row" style="gap:5px;">
+              <button class="toggle-btn" style="font-size:10px;padding:3px 7px;">Visibile</button>
+              <select class="field-select" style="font-size:10px;">
+                <option>Lunedì</option><option>Monday</option><option>Mon</option>
+              </select>
+              <div class="color-swatch" style="background:#ffff00;width:22px;height:22px;"></div>
+            </div>
+          </div>
+          <div class="clock-item">
+            <div class="field-label">Calendario lunare</div>
+            <div class="field-row" style="gap:5px;">
+              <button class="toggle-btn" style="font-size:10px;padding:3px 7px;">Visibile</button>
+              <div class="color-swatch" style="background:#ff88ff;width:22px;height:22px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Analogico -->
+      <div id="analog-fields" style="display:none;">
+        <div class="field-label" style="margin-bottom:8px;">Colori lancette e scala</div>
+        <div class="clock-grid">
+          <div class="clock-item"><div class="field-label">Lancetta ore</div><div class="field-row"><div class="color-swatch" style="background:#ffffff;"></div><span style="font-size:11px;color:#888;">#ffffff</span></div></div>
+          <div class="clock-item"><div class="field-label">Lancetta minuti</div><div class="field-row"><div class="color-swatch" style="background:#ffffff;"></div><span style="font-size:11px;color:#888;">#ffffff</span></div></div>
+          <div class="clock-item"><div class="field-label">Lancetta secondi</div><div class="field-row"><div class="color-swatch" style="background:#ff4444;"></div><span style="font-size:11px;color:#888;">#ff4444</span></div></div>
+          <div class="clock-item"><div class="field-label">Scala ore</div><div class="field-row"><div class="color-swatch" style="background:#aaaaaa;"></div><span style="font-size:11px;color:#888;">#aaaaaa</span></div></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div class="field-group">
+        <div class="field-label">Font generale</div>
+        <div class="font-row">
+          <select class="field-select"><option>Arial</option><option>宋体</option></select>
+          <input class="field-input" type="number" value="12" style="width:52px;">
+          <div class="color-swatch" style="background:#ff0000;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-footer"><button class="btn-cancel">Annulla</button><button class="btn-ok">Aggiungi livello</button></div>
+  </div>
+</div>
+
+<script>
+  function show(type, el) {
+    document.querySelectorAll('.dlg').forEach(d=>d.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('dlg-'+type).classList.add('active');
+    el.classList.add('active');
+  }
+  function setClockType(type, btn) {
+    btn.closest('.toggle-row').querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('digital-fields').style.display = type==='digital'?'block':'none';
+    document.getElementById('analog-fields').style.display = type==='analog'?'block':'none';
+    document.getElementById('multiline-field').style.display = type==='digital'?'flex':'none';
+  }
+  document.querySelectorAll('input[type=range]').forEach(r=>{
+    r.addEventListener('input', e=>e.target.closest('.range-wrap').querySelector('.range-val').textContent=e.target.value);
+  });
+  document.querySelectorAll('.toggle-row').forEach(row=>{
+    if(row.children.length===2) row.querySelectorAll('.toggle-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ row.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); });
+    });
+  });
+</script>
+</body></html>
