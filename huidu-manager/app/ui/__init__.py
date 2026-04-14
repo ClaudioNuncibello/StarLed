@@ -1,1 +1,1 @@
-"""Componenti UI PyQt6. Implementati in Fase 3."""
+# Package UI
