@@ -70,6 +70,8 @@ def print_menu() -> None:
     print("║  8 — Verifica licenza                          ║")
     print("║  9 — Imposta task accensione/spegnimento        ║")
     print("║ 10 — Riavvia dispositivo                       ║")
+    print("║ 11 — Controllo luminosità schermo              ║")
+    print("║ 12 — Lista presentazioni attive sul dispositivo║")
     print("║  0 — Esci                                      ║")
     print("╚═══════════════════════════════════════════════╝")
 
@@ -240,7 +242,12 @@ def main() -> None:
                     print(f"✗ File non trovato: {file_path}")
                     continue
 
-                # Upload con callback progresso
+                print(f"Lettura dimensioni schermo di {dev}...")
+                props = device_api.get_device_property(dev)
+                w = int(props.get("screen.width", 128))
+                h = int(props.get("screen.height", 64))
+
+                # Upload con callback progresso e ridimensionamento
                 print(f"Upload {os.path.basename(file_path)}...")
 
                 def on_progress(sent: int, total: int) -> None:
@@ -248,13 +255,8 @@ def main() -> None:
                         pct = sent * 100 // total
                         print(f"  Progresso: {pct}% ({sent}/{total} byte)")
 
-                result = file_uploader.upload(dev, file_path, progress=on_progress)
+                result = file_uploader.upload(dev, file_path, target_size=(w, h), progress=on_progress)
                 print(f"✓ File caricato: {result.name} (MD5: {result.md5})")
-
-                # Leggi dimensioni schermo per la presentazione
-                props = device_api.get_device_property(dev)
-                w = int(props.get("screen.width", 128))
-                h = int(props.get("screen.height", 64))
 
                 # Crea e invia presentazione con immagine
                 pres = Presentation.simple_image(
@@ -330,6 +332,37 @@ def main() -> None:
                 delay_int = int(delay) if delay else 5
                 device_api.reboot_device(dev, delay=delay_int)
                 print(f"✓ Riavvio programmato tra {delay_int} secondi.")
+
+            elif scelta == "11":
+                dev = prompt_device_id(known_devices)
+                if not dev:
+                    continue
+                print(f"Lettura luminosità attuale di {dev}...")
+                props = device_api.get_device_property(dev)
+                curr_lum = props.get('luminance', 'N/A')
+                print(f"  - Luminosità attuale: {curr_lum}%")
+                
+                new_lum = input("Nuova luminosità (0-100) [premi Invio per non cambiare]: ").strip()
+                if new_lum.isdigit() and 0 <= int(new_lum) <= 100:
+                    device_api.set_device_property(dev, luminance=new_lum)
+                    print(f"✓ Luminosità impostata a {new_lum}%.")
+                else:
+                    print("Operazione annullata o valore non valido.")
+
+            elif scelta == "12":
+                dev = prompt_device_id(known_devices)
+                if not dev:
+                    continue
+                print(f"Recupero presentazioni da {dev}...")
+                programs = program_api.get_programs(dev)
+                if not programs:
+                    print("Nessuna presentazione presente sul dispositivo.")
+                else:
+                    print(f"✓ Trovate {len(programs)} presentazioni:")
+                    for i, p in enumerate(programs, 1):
+                        uid = p.get('uuid', 'N/A')
+                        name = p.get('name', 'Senza Nome')
+                        print(f"  {i}. [UUID: {uid}] - {name}")
 
             else:
                 print("✗ Scelta non valida, riprova.")
