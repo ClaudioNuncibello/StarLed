@@ -100,7 +100,11 @@ class ScreenSettingsDialog(QDialog):
         # Network and Hardware Info Grid
         grid = QGridLayout()
         grid.addWidget(QLabel("IP Gateway:"), 0, 0)
-        grid.addWidget(QLabel(self.manager.gateway.ip if self.manager else "Sconosciuto"), 0, 1)
+        try:
+            gateway_ip = self.manager.gateway.ip if self.manager else "N/D"
+        except AttributeError:
+            gateway_ip = "N/D"
+        grid.addWidget(QLabel(gateway_ip), 0, 1)
         grid.addWidget(QLabel("Larghezza:"), 1, 0)
         grid.addWidget(QLabel(f"{self.props.get('width', 0)} px"), 1, 1)
         grid.addWidget(QLabel("Altezza:"), 2, 0)

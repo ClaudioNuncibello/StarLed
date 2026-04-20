@@ -14,6 +14,7 @@ from app.ui.dialogs.image_dialog import ImageDialog
 from app.ui.dialogs.video_dialog import VideoDialog
 from app.ui.dialogs.text_dialog import TextDialog
 from app.ui.dialogs.clock_dialog import ClockDialog
+from app.ui.workers import DeviceListWorker, ProgramFetchWorker, ProgramPushWorker, FileUploadWorker
 
 class MainWindow(QMainWindow):
     def __init__(self, app_manager=None, parent=None):
@@ -26,15 +27,7 @@ class MainWindow(QMainWindow):
         self.active_screen_id = None
         self.active_presentation_uuid = None
         
-        # Stato mockato locale per la Fase 2 finché non collegheremo il manager
-        self.mock_presentations = {
-            "mock-screen-1": {
-                "mock-uuid-1": {"uuid": "mock-uuid-1", "name": "Vetrina Primavera", "items": []}
-            },
-            "mock-screen-2": {
-                "mock-uuid-2": {"uuid": "mock-uuid-2", "name": "Promo Luglio", "items": []}
-            }
-        }
+        self.presentations_cache = {}
         
         self.setup_ui()
         self.connect_signals()
@@ -99,16 +92,26 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(500, self._refresh_screens)
         
     def _refresh_screens(self) -> None:
-        """Fase 3: chiamerà HuiduClient.get_device_list()"""
-        self.sidebar.screens_header.setText("SCHERMI")
+        self.sidebar.screens_header.setText("SCHERMI (aggiorn...)")
         self.statusbar.showMessage("Aggiornamento schermi...")
-        # Stub: normally calls manager.refresh() via QThread
-        mock_screens = [
-            {"deviceId": "mock-screen-1", "online": True},
-            {"deviceId": "mock-screen-2", "online": False}
-        ]
-        self.sidebar.set_screens(mock_screens)
-        self.statusbar.showMessage("Schermi aggiornati", 3000)
+        if not self.manager: return
+        
+        self.dev_worker = DeviceListWorker(self.manager)
+        
+        def on_screens(screens):
+            self.sidebar.screens_header.setText("SCHERMI")
+            self.statusbar.showMessage(f"Trovati {len(screens)} schermi", 3000)
+            screen_data = [{"deviceId": s.id, "online": s.open_status} for s in screens]
+            self.sidebar.set_screens(screen_data)
+            
+        def on_error(err):
+            self.sidebar.screens_header.setText("SCHERMI")
+            self.statusbar.showMessage(f"Errore schermi: {err}")
+            QMessageBox.warning(self, "Errore Rete", str(err))
+
+        self.dev_worker.finished.connect(on_screens)
+        self.dev_worker.error.connect(on_error)
+        self.dev_worker.start()
         
     def on_screen_selected(self, device_id):
         if not device_id:
@@ -141,10 +144,30 @@ class MainWindow(QMainWindow):
         self._refresh_presentations(self.active_screen_id)
         
     def _refresh_presentations(self, screen_id: str) -> None:
-        """Fase 3: chiamerà HuiduClient.get_programs(screen_id)"""
-        if not screen_id: return
-        screen_pres = self.mock_presentations.setdefault(screen_id, {})
-        self.sidebar.set_presentations(list(screen_pres.values()))
+        if not screen_id or not self.manager: return
+        self.statusbar.showMessage("Lettura programmi...")
+        
+        self.prog_worker = ProgramFetchWorker(self.manager, screen_id)
+        
+        def on_programs(programs, s_id):
+            self.statusbar.showMessage(f"Trovati {len(programs)} programmi", 3000)
+            cache = self.presentations_cache.setdefault(s_id, {})
+            new_cache = {}
+            for p in programs:
+                uid = p.get("uuid")
+                name = p.get("name")
+                existing = cache.get(uid, {"items": []})
+                new_cache[uid] = {"uuid": uid, "name": name, "items": existing.get("items", [])}
+            self.presentations_cache[s_id] = new_cache
+            self.sidebar.set_presentations(list(new_cache.values()))
+
+        def on_error(err):
+            self.statusbar.showMessage(f"Errore lettura programmi")
+            QMessageBox.warning(self, "Errore Rete", err)
+
+        self.prog_worker.finished.connect(on_programs)
+        self.prog_worker.error.connect(on_error)
+        self.prog_worker.start()
         
     def create_playlist(self):
         if not self.active_screen_id: return
@@ -166,7 +189,7 @@ class MainWindow(QMainWindow):
         self.active_presentation_uuid = pres_uuid
         self.toolbar.on_presentation_selected(True)
         
-        screen_pres = self.mock_presentations.setdefault(self.active_screen_id, {})
+        screen_pres = self.presentations_cache.setdefault(self.active_screen_id, {})
         pres = screen_pres.get(pres_uuid)
         items = pres.get("items", []) if pres else []
         self.sidebar.set_layers(items)
@@ -175,13 +198,13 @@ class MainWindow(QMainWindow):
     def on_layer_selected(self, idx):
         if not self.active_screen_id or not self.active_presentation_uuid: return
         self.preview_area.update_layers(
-            self.mock_presentations[self.active_screen_id][self.active_presentation_uuid]["items"],
+            self.presentations_cache[self.active_screen_id][self.active_presentation_uuid]["items"],
             selected_idx=idx
         )
         
     def on_layers_reordered(self, new_indices):
         if not self.active_screen_id or not self.active_presentation_uuid: return
-        pres = self.mock_presentations[self.active_screen_id][self.active_presentation_uuid]
+        pres = self.presentations_cache[self.active_screen_id][self.active_presentation_uuid]
         old_items = pres["items"]
         new_items = [old_items[i] for i in new_indices]
         pres["items"] = new_items
@@ -207,13 +230,13 @@ class MainWindow(QMainWindow):
         
     def add_layer_to_presentation(self, item_data):
         if not self.active_screen_id or not self.active_presentation_uuid: return
-        self.mock_presentations[self.active_screen_id][self.active_presentation_uuid]["items"].append(item_data)
+        self.presentations_cache[self.active_screen_id][self.active_presentation_uuid]["items"].append(item_data)
         self.on_presentation_selected(self.active_presentation_uuid) # Refresh visual
         self.statusbar.showMessage("Nuovo livello aggiunto", 3000)
 
     def on_presentation_edit_requested(self, uuid_id):
         if not self.active_screen_id: return
-        pres = self.mock_presentations[self.active_screen_id].get(uuid_id)
+        pres = self.presentations_cache[self.active_screen_id].get(uuid_id)
         if not pres: return
         new_name, ok = QInputDialog.getText(self, "Rinomina", "Nuovo nome:", text=pres["name"])
         if ok and new_name:
@@ -222,29 +245,29 @@ class MainWindow(QMainWindow):
 
     def on_presentation_duplicate_requested(self, uuid_id):
         if not self.active_screen_id: return
-        pres = self.mock_presentations[self.active_screen_id].get(uuid_id)
+        pres = self.presentations_cache[self.active_screen_id].get(uuid_id)
         if not pres: return
         import copy
         new_pres = copy.deepcopy(pres)
         new_pres["uuid"] = str(uuid.uuid4())
         new_pres["name"] = new_pres["name"] + " (Copia)"
-        self.mock_presentations[self.active_screen_id][new_pres["uuid"]] = new_pres
+        self.presentations_cache[self.active_screen_id][new_pres["uuid"]] = new_pres
         self._refresh_presentations(self.active_screen_id)
 
     def on_presentation_delete_requested(self, uuid_id):
         if not self.active_screen_id: return
-        pres = self.mock_presentations[self.active_screen_id].get(uuid_id)
+        pres = self.presentations_cache[self.active_screen_id].get(uuid_id)
         if not pres: return
         ret = QMessageBox.question(self, "Conferma", f"Vuoi davvero eliminare la presentazione '{pres['name']}'?")
         if ret == QMessageBox.StandardButton.Yes:
-            del self.mock_presentations[self.active_screen_id][uuid_id]
+            del self.presentations_cache[self.active_screen_id][uuid_id]
             if self.active_presentation_uuid == uuid_id:
                 self.on_presentation_selected("")
             self._refresh_presentations(self.active_screen_id)
 
     def on_layer_edit_requested(self, idx):
         if not self.active_screen_id or not self.active_presentation_uuid: return
-        items = self.mock_presentations[self.active_screen_id][self.active_presentation_uuid]["items"]
+        items = self.presentations_cache[self.active_screen_id][self.active_presentation_uuid]["items"]
         if idx < 0 or idx >= len(items): return
         
         item_data = items[idx]
@@ -273,7 +296,7 @@ class MainWindow(QMainWindow):
 
     def on_layer_delete_requested(self, idx):
         if not self.active_screen_id or not self.active_presentation_uuid: return
-        items = self.mock_presentations[self.active_screen_id][self.active_presentation_uuid]["items"]
+        items = self.presentations_cache[self.active_screen_id][self.active_presentation_uuid]["items"]
         if idx < 0 or idx >= len(items): return
         
         ret = QMessageBox.question(self, "Conferma", "Vuoi eliminare il livello selezionato?")

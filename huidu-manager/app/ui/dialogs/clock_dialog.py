@@ -122,22 +122,6 @@ class ClockDialog(QDialog):
         page_analog = QWidget()
         ana_layout = QVBoxLayout(page_analog)
         
-        def create_color_row(label_text):
-            row = QHBoxLayout()
-            row.addWidget(QLabel(label_text))
-            col = ColorPickerButton("#ff0000" if "secondi" in label_text.lower() else "#ffffff")
-            row.addStretch()
-            row.addWidget(col)
-            return row, col
-            
-        _, self.col_hour_hand = create_color_row("Lancetta Ore")
-        _, self.col_minute_hand = create_color_row("Lancetta Minuti")
-        _, self.col_second_hand = create_color_row("Lancetta Secondi")
-        _, self.col_hour_scale = create_color_row("Scala Ore (tacche)")
-        _, self.col_minute_scale = create_color_row("Scala Minuti")
-        
-        ana_layout.addLayout(_[0]) # Add last row reference to avoid discarding, but wait I need all
-        # Correction:
         for lbl_text, col_ref, default_c in [
             ("Lancetta Ore", "col_hour_hand", "#ffffff"),
             ("Lancetta Minuti", "col_minute_hand", "#ffffff"),

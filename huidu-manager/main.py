@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QApplication
 
 from app.ui.login_dialog import LoginDialog
 from app.ui.main_window import MainWindow
+from app.core.app_manager import AppManager
 
 def main():
     app = QApplication(sys.argv)
@@ -19,7 +20,8 @@ def main():
     login_dialog = LoginDialog()
     if login_dialog.exec():
         print("Login Validation Superata (STUB)")
-        window = MainWindow()
+        app_manager = AppManager()
+        window = MainWindow(app_manager=app_manager)
         window.show()
         sys.exit(app.exec())
     else:
