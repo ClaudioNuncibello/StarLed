@@ -5,6 +5,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 
 class DeviceWorker(QThread):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
     def __init__(self, action, manager, device_id, *args):
         super().__init__()
         self.action = action
@@ -15,15 +18,18 @@ class DeviceWorker(QThread):
     def run(self):
         try:
             if self.action == "set_prop":
-                self.manager.gateway.set_device_property(self.device_id, *self.args)
+                self.manager.device_api.set_device_property(self.device_id, **self.args[0])
             elif self.action == "reboot":
-                self.manager.gateway.reboot_device(self.device_id, delay=5)
+                self.manager.device_api.reboot_device(self.device_id, delay=5)
             elif self.action == "open":
-                self.manager.gateway.open_device_screen(self.device_id)
+                self.manager.device_api.open_screen(self.device_id)
             elif self.action == "close":
-                self.manager.gateway.close_device_screen(self.device_id)
+                self.manager.device_api.close_screen(self.device_id)
+            self.finished.emit()
         except Exception as e:
-            print(f"Error executing DeviceWorker action {self.action}: {e}")
+            err_msg = getattr(e, 'message', str(e))
+            print(f"Error executing DeviceWorker action {self.action}: {err_msg}")
+            self.error.emit(err_msg)
 
 class ScreenSettingsDialog(QDialog):
     def __init__(self, device_id, device_props, screen_manager, parent=None):
@@ -35,7 +41,7 @@ class ScreenSettingsDialog(QDialog):
         self.setWindowTitle("Impostazioni Schermo")
         self.setFixedSize(380, 480)
         
-        self.worker = None
+        self._workers = set()
         self.debounce_timer = QTimer()
         self.debounce_timer.setSingleShot(True)
         self.debounce_timer.setInterval(500)
@@ -46,6 +52,12 @@ class ScreenSettingsDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
+        
+        def safe_int(key, default):
+            try:
+                return int(self.props.get(key, default))
+            except (TypeError, ValueError):
+                return default
         
         # Header
         header_text = f"● {self.device_id}  |  FW: {self.props.get('firmwareVersion', 'N/D')}"
@@ -58,7 +70,7 @@ class ScreenSettingsDialog(QDialog):
         lum_layout = QHBoxLayout()
         self.lum_slider = QSlider(Qt.Orientation.Horizontal)
         self.lum_slider.setRange(0, 100)
-        self.lum_slider.setValue(self.props.get('luminance', 50))
+        self.lum_slider.setValue(safe_int('luminance', 50))
         
         self.lum_val_label = QLabel(str(self.lum_slider.value()))
         self.lum_slider.valueChanged.connect(lambda v: self.on_slider_change(self.lum_val_label, v))
@@ -72,7 +84,7 @@ class ScreenSettingsDialog(QDialog):
         vol_layout = QHBoxLayout()
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 100)
-        self.vol_slider.setValue(self.props.get('volume', 50))
+        self.vol_slider.setValue(safe_int('volume', 50))
         
         self.vol_val_label = QLabel(str(self.vol_slider.value()))
         self.vol_slider.valueChanged.connect(lambda v: self.on_slider_change(self.vol_val_label, v))
@@ -99,18 +111,18 @@ class ScreenSettingsDialog(QDialog):
         
         # Network and Hardware Info Grid
         grid = QGridLayout()
-        grid.addWidget(QLabel("IP Gateway:"), 0, 0)
+        grid.addWidget(QLabel("IP Ethernet:"), 0, 0)
         try:
-            gateway_ip = self.manager.gateway.ip if self.manager else "N/D"
+            eth_ip = self.props.get('eth.ip', "N/D")
         except AttributeError:
-            gateway_ip = "N/D"
-        grid.addWidget(QLabel(gateway_ip), 0, 1)
+            eth_ip = "N/D"
+        grid.addWidget(QLabel(eth_ip), 0, 1)
         grid.addWidget(QLabel("Larghezza:"), 1, 0)
-        grid.addWidget(QLabel(f"{self.props.get('width', 0)} px"), 1, 1)
+        grid.addWidget(QLabel(f"{self.props.get('screen.width', 0)} px"), 1, 1)
         grid.addWidget(QLabel("Altezza:"), 2, 0)
-        grid.addWidget(QLabel(f"{self.props.get('height', 0)} px"), 2, 1)
-        grid.addWidget(QLabel("Hardware:"), 3, 0)
-        grid.addWidget(QLabel(self.props.get('hardwareVersion', 'N/D')), 3, 1)
+        grid.addWidget(QLabel(f"{self.props.get('screen.height', 0)} px"), 2, 1)
+        grid.addWidget(QLabel("Firmware OS:"), 3, 0)
+        grid.addWidget(QLabel(self.props.get('version.app', 'N/D')), 3, 1)
         
         layout.addLayout(grid)
         layout.addStretch()
@@ -122,7 +134,7 @@ class ScreenSettingsDialog(QDialog):
     def _apply_properties(self):
         lum = self.lum_slider.value()
         vol = self.vol_slider.value()
-        self._run_async("set_prop", {"luminance": lum, "volume": vol})
+        self._run_async("set_prop", {"luminance": str(lum), "volume": str(vol)})
 
     def on_accendi(self):
         self._run_async("open")
@@ -140,5 +152,16 @@ class ScreenSettingsDialog(QDialog):
             self.accept()
             
     def _run_async(self, action, *args):
-        self.worker = DeviceWorker(action, self.manager, self.device_id, *args)
-        self.worker.start()
+        worker = DeviceWorker(action, self.manager, self.device_id, *args)
+        self._workers.add(worker)
+        
+        def on_finished():
+            self._workers.discard(worker)
+            
+        def on_error(msg):
+            self._workers.discard(worker)
+            QMessageBox.warning(self, "Errore Dispositivo", f"L'azione '{action}' è fallita:\n{msg}")
+            
+        worker.finished.connect(on_finished)
+        worker.error.connect(on_error)
+        worker.start()

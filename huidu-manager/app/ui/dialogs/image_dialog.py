@@ -65,7 +65,7 @@ class CommonEffectSection(QWidget):
         return {
             "type": self.effect_type.currentData() or 0,
             "speed": self.effect_speed.value(),
-            "hold_ms": self.hold_ms.value()
+            "hold": self.hold_ms.value()
         }
 
 class ImageDialog(QDialog):

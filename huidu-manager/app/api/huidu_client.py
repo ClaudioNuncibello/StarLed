@@ -163,6 +163,7 @@ class HuiduClient:
         path: str,
         file_path: str,
         *,
+        file_name: str | None = None,
         timeout: int = _UPLOAD_TIMEOUT,
     ) -> dict[str, Any]:
         """Esegue l'upload di un file con multipart/form-data.
@@ -193,10 +194,12 @@ class HuiduClient:
         url = self._base_url + path
         # Firma regola file — Content-Type assente (gestito da requests)
         headers = self._signer.sign_file_upload()
-        logger.debug("POST_FILE %s file=%s size=%d", url, p.name, p.stat().st_size)
+        
+        upload_name = file_name if file_name else p.name
+        logger.debug("POST_FILE %s file=%s size=%d", url, upload_name, p.stat().st_size)
         try:
             with open(p, "rb") as fh:
-                files = {"data": (p.name, fh, "application/octet-stream")}
+                files = {"file": (upload_name, fh, "application/octet-stream")}
                 response = requests.post(
                     url, headers=headers, files=files, timeout=timeout
                 )

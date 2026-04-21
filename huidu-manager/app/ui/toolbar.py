@@ -4,6 +4,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 class Toolbar(QToolBar):
     new_playlist_requested = pyqtSignal()
     new_item_requested = pyqtSignal(str)   # "image" | "video" | "text" | "clock"
+    push_playlist_requested = pyqtSignal()
     screen_settings_requested = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -44,6 +45,14 @@ class Toolbar(QToolBar):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.addWidget(spacer)
         
+        # Pulsante Invio a Schermo
+        self.btn_push_playlist = QPushButton("🚀 Invia a Schermo")
+        self.btn_push_playlist.setObjectName("PrimaryButton")
+        self.btn_push_playlist.setEnabled(False) # Abilitato se presentazione selezionata
+        self.btn_push_playlist.clicked.connect(self.push_playlist_requested.emit)
+        
+        self.addWidget(self.btn_push_playlist)
+
         self.addSeparator()
         
         # Pulsante Schermo
@@ -59,3 +68,4 @@ class Toolbar(QToolBar):
     def on_presentation_selected(self, active: bool):
         for btn in self.item_buttons:
             btn.setEnabled(active)
+        self.btn_push_playlist.setEnabled(active)

@@ -115,3 +115,142 @@ class ProgramPushWorker(QThread):
         except Exception as e:
             msg = getattr(e, "message", str(e))
             self.error.emit(f"Errore scrittura programma: {msg}")
+
+class PlaylistPushWorker(QThread):
+    progress = pyqtSignal(str) # operation info
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, manager, device_id, presentation_data, screen_w, screen_h):
+        super().__init__()
+        self.manager = manager
+        self.device_id = device_id
+        self.presentation_data = presentation_data
+        self.screen_w = screen_w
+        self.screen_h = screen_h
+
+    def run(self):
+        try:
+            import os
+            from app.core.presentation_model import (
+                Presentation, Area, TextItem, ImageItem, VideoItem, DigitalClockItem, Effect, Font
+            )
+            
+            items_data = self.presentation_data.get("items", [])
+            pres_name = self.presentation_data.get("name", "Playlist")
+            
+            built_items = []
+            
+            for i, item in enumerate(items_data):
+                itype = item.get("type", "").lower()
+                effect_cfg = item.get("effect", {})
+                effect = Effect(type=effect_cfg.get("type", 0), speed=effect_cfg.get("speed", 5), hold=effect_cfg.get("hold", 5000))
+                
+                if itype in ("image", "video"):
+                    file_path = item.get("file")
+                    if file_path and os.path.exists(file_path):
+                        self.progress.emit(f"Upload media: {os.path.basename(file_path)}...")
+                        up_res = self.manager.uploader.upload(self.device_id, file_path)
+                        
+                        if itype == "image":
+                            fit = item.get("fit", "stretch")
+                            built_items.append(ImageItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, fit=fit, effect=effect))
+                        else:
+                            built_items.append(VideoItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, effect=effect))
+                    else:
+                        print(f"Skipping empty or missing file: {file_path}")
+                elif itype == "text":
+                    text_str = item.get("string", "")
+                    font_cfg = item.get("font", {})
+                    font = Font(
+                        name=font_cfg.get("name", "Arial"),
+                        size=font_cfg.get("size", 14),
+                        bold=font_cfg.get("bold", False),
+                        italic=font_cfg.get("italic", False),
+                        underline=font_cfg.get("underline", False),
+                        color=font_cfg.get("color", "#ffffff")
+                    )
+                    multi_line = item.get("multi_line", False)
+                    play_text = item.get("play_text", False)
+                    align_str = item.get("alignment", "middle,center")
+                    parts = align_str.split(",")
+                    valign = parts[0] if len(parts) > 0 else "middle"
+                    align = parts[1] if len(parts) > 1 else "center"
+                    
+                    built_items.append(TextItem(
+                        string=text_str,
+                        font=font,
+                        effect=effect,
+                        multiLine=multi_line,
+                        alignment=align,
+                        valignment=valign,
+                        PlayText=play_text
+                    ))
+                elif itype in ("digitalclock", "clock", "dialclock"):
+                    built_items.append(DigitalClockItem())
+
+            if not built_items:
+                self.error.emit("Nessun livello valido per l'invio.")
+                return
+
+            areas = []
+            built_items.reverse()
+            for item in built_items:
+                areas.append(Area(0, 0, self.screen_w, self.screen_h, item=[item]))
+
+            pres = Presentation(name=pres_name, area=areas, uuid=self.presentation_data.get("uuid"))
+            
+            self.progress.emit("Invio programma al dispositivo...")
+            self.manager.programs_api.send_presentation(self.device_id, pres)
+            self.finished.emit()
+            
+        except Exception as e:
+            msg = getattr(e, "message", str(e))
+            self.error.emit(f"Errore push playlist: {msg}")
+
+class ProgramRemoveWorker(QThread):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, manager, device_id, uuids):
+        super().__init__()
+        self.manager = manager
+        self.device_id = device_id
+        self.uuids = uuids
+
+    def run(self):
+        try:
+            self.manager.programs_api.remove_presentation(self.device_id, self.uuids)
+            self.finished.emit()
+        except Exception as e:
+            msg = getattr(e, "message", str(e))
+            self.error.emit(f"Errore rimozione: {msg}")
+
+class ProgramRenameWorker(QThread):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, manager, device_id, uuid_id, new_name):
+        super().__init__()
+        self.manager = manager
+        self.device_id = device_id
+        self.uuid_id = uuid_id
+        self.new_name = new_name
+
+    def run(self):
+        try:
+            payload = {
+                "method": "update",
+                "id": self.device_id,
+                "data": [{
+                    "uuid": self.uuid_id,
+                    "name": self.new_name,
+                    "type": "normal"
+                }]
+            }
+            res = self.manager.programs_api._client.post("/api/program/", payload)
+            self.manager.programs_api._check_device_response(res, self.device_id)
+            self.finished.emit()
+        except Exception as e:
+            msg = getattr(e, "message", str(e))
+            self.error.emit(f"Errore rinomina: {msg}")

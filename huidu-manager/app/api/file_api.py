@@ -111,13 +111,18 @@ class FileApi:
 
         # Calcola MD5 locale prima dell'upload
         local_md5, local_size = compute_md5(path)
+        
+        # Genera un nome sicuro usando hash e suffisso puro per evitare problemi Huidu
+        # con spazi e caratteri speciali nei percorsi PC Windows
+        safe_name = f"{local_md5}{path.suffix.lower()}"
+        
         logger.info(
-            "Upload %s (%d byte, MD5=%s) a %s",
-            path.name, local_size, local_md5, device_id,
+            "Upload %s (%d byte, MD5=%s) a %s come %s",
+            path.name, local_size, local_md5, device_id, safe_name
         )
 
         # Upload via client
-        response = self._client.post_file(f"/api/file/{device_id}", str(path))
+        response = self._client.post_file(f"/api/file/{device_id}", str(path), file_name=safe_name)
 
         # Estrai risultato dalla risposta
         items = response.get("data", [])
@@ -135,11 +140,17 @@ class FileApi:
                 status_code=200,
             )
 
+        raw_url = file_data.get("data", "")
+        if not raw_url.startswith("http"):
+            # fallback: costruisci URL canonico dal nome file sicuro
+            ret_name = file_data.get("name", safe_name)
+            raw_url = f"{self._client._base_url}/api/file/{ret_name}"
+
         result = FileUploadResult(
-            name=file_data.get("name", path.name),
+            name=file_data.get("name", safe_name),
             md5=file_data.get("md5", local_md5),
             size=int(file_data.get("size", local_size)),
-            url=file_data.get("data", ""),
+            url=raw_url,
         )
         logger.info("Upload completato: %s → %s", result.name, result.url[:80])
         return result
