@@ -6,6 +6,7 @@ class Toolbar(QToolBar):
     new_item_requested = pyqtSignal(str)   # "image" | "video" | "text" | "clock"
     push_playlist_requested = pyqtSignal()
     screen_settings_requested = pyqtSignal()
+    discovery_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -15,6 +16,15 @@ class Toolbar(QToolBar):
         self.setup_ui()
         
     def setup_ui(self):
+        # Pulsante Discovery — sempre abilitato
+        self.btn_discover = QPushButton("🔍 Cerca dispositivi")
+        self.btn_discover.setObjectName("AccentTextButton")
+        self.btn_discover.setToolTip("Scansiona la rete locale alla ricerca di controller Huidu (porta 30080)")
+        self.btn_discover.clicked.connect(self.discovery_requested.emit)
+        self.addWidget(self.btn_discover)
+
+        self.addSeparator()
+
         # Pulsante Playlist
         self.btn_new_playlist = QPushButton("+ Nuova playlist")
         self.btn_new_playlist.setObjectName("AccentTextButton")

@@ -4,6 +4,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSettings
 import uuid
+import json
+import os
 
 # UI Imports
 from app.ui.toolbar import Toolbar
@@ -14,7 +16,10 @@ from app.ui.dialogs.image_dialog import ImageDialog
 from app.ui.dialogs.video_dialog import VideoDialog
 from app.ui.dialogs.text_dialog import TextDialog
 from app.ui.dialogs.clock_dialog import ClockDialog
-from app.ui.workers import DeviceListWorker, ProgramFetchWorker, ProgramPushWorker, FileUploadWorker, PlaylistPushWorker
+from app.ui.workers import (
+    DeviceListWorker, ProgramFetchWorker, ProgramPushWorker,
+    FileUploadWorker, PlaylistPushWorker, DiscoveryWorker,
+)
 
 class MainWindow(QMainWindow):
     def __init__(self, app_manager=None, parent=None):
@@ -28,6 +33,9 @@ class MainWindow(QMainWindow):
         self.active_presentation_uuid = None
         
         self.presentations_cache = {}
+        # UUID che esistono fisicamente sul dispositivo (da ultimo get_programs)
+        # Serve per distinguere presentazioni locali da quelle sul device al momento del delete
+        self._device_uuids: dict[str, set[str]] = {}
         
         self.setup_ui()
         self.connect_signals()
@@ -79,12 +87,14 @@ class MainWindow(QMainWindow):
         self.sidebar.presentation_edit_requested.connect(self.on_presentation_edit_requested)
         self.sidebar.presentation_duplicate_requested.connect(self.on_presentation_duplicate_requested)
         self.sidebar.presentation_delete_requested.connect(self.on_presentation_delete_requested)
+        self.sidebar.presentation_activate_requested.connect(self.on_presentation_activate_requested)
         
         # Toolbar Actions
         self.toolbar.new_playlist_requested.connect(self.create_playlist)
         self.toolbar.new_item_requested.connect(self.open_item_dialog)
         self.toolbar.screen_settings_requested.connect(self.open_screen_settings)
         self.toolbar.push_playlist_requested.connect(self.on_push_playlist_requested)
+        self.toolbar.discovery_requested.connect(self._run_discovery)
 
     # --- Slots Gestione Schermi ---
     def on_screens_refresh_ui_triggered(self):
@@ -113,6 +123,113 @@ class MainWindow(QMainWindow):
         self.dev_worker.finished.connect(on_screens)
         self.dev_worker.error.connect(on_error)
         self.dev_worker.start()
+
+    # --- Discovery automatica dispositivi ---
+
+    def _run_discovery(self) -> None:
+        """Avvia la scansione della subnet locale cercando gateway Huidu."""
+        import os
+        sdk_key = os.environ.get("HUIDU_SDK_KEY", "")
+        sdk_secret = os.environ.get("HUIDU_SDK_SECRET", "")
+        if not sdk_key or not sdk_secret:
+            QMessageBox.warning(
+                self,
+                "Credenziali mancanti",
+                "SDK Key e SDK Secret non trovati nel file .env.\n"
+                "Impossibile eseguire la scansione autenticata.",
+            )
+            return
+
+        self.toolbar.btn_discover.setEnabled(False)
+        self.toolbar.btn_discover.setText("⏳ Scansione in corso...")
+        self.statusbar.showMessage("Scansione rete locale (porta 30080)...")
+
+        self._disc_worker = DiscoveryWorker(sdk_key=sdk_key, sdk_secret=sdk_secret)
+
+        def on_gateways(gateways):
+            self.toolbar.btn_discover.setEnabled(True)
+            self.toolbar.btn_discover.setText("🔍 Cerca dispositivi")
+            if not gateways:
+                self.statusbar.showMessage("Nessun gateway Huidu trovato sulla rete", 5000)
+                QMessageBox.information(
+                    self,
+                    "Discovery completata",
+                    "Nessun controller Huidu trovato sulla subnet locale.\n"
+                    "Verificare che i dispositivi siano accesi e connessi alla rete.",
+                )
+                return
+            self._apply_discovered_gateways(gateways)
+
+        def on_error(msg):
+            self.toolbar.btn_discover.setEnabled(True)
+            self.toolbar.btn_discover.setText("🔍 Cerca dispositivi")
+            self.statusbar.showMessage(f"Errore discovery: {msg}", 5000)
+            QMessageBox.warning(self, "Errore Discovery", msg)
+
+        def on_progress(msg):
+            self.statusbar.showMessage(msg)
+
+        self._disc_worker.finished.connect(on_gateways)
+        self._disc_worker.error.connect(on_error)
+        self._disc_worker.progress.connect(on_progress)
+        self._disc_worker.start()
+
+    def _apply_discovered_gateways(self, gateways) -> None:
+        """Aggiorna AppManager con il primo gateway trovato e ricarica la lista schermi.
+
+        Se vengono trovati più gateway, mostra un dialogo di selezione.
+        """
+        from app.api.huidu_client import HuiduClient
+        from app.api.device_api import DeviceApi
+        from app.api.program_api import ProgramApi
+        from app.api.file_api import FileApi
+        from app.core.file_uploader import FileUploader
+        from app.core.screen_manager import ScreenManager
+        import os
+
+        if len(gateways) == 1:
+            chosen = gateways[0]
+        else:
+            # Più gateway: chiedi all'utente quale usare
+            items = [
+                f"{gw.host}:{gw.port}  ({len(gw.device_ids)} controller)"
+                for gw in gateways
+            ]
+            from PyQt6.QtWidgets import QInputDialog
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Gateway trovati",
+                f"Trovati {len(gateways)} gateway Huidu. Seleziona a quale connettersi:",
+                items,
+                editable=False,
+            )
+            if not ok:
+                return
+            chosen = gateways[items.index(choice)]
+
+        sdk_key = os.environ.get("HUIDU_SDK_KEY", "")
+        sdk_secret = os.environ.get("HUIDU_SDK_SECRET", "")
+
+        new_client = HuiduClient(
+            host=chosen.host,
+            port=chosen.port,
+            sdk_key=sdk_key,
+            sdk_secret=sdk_secret,
+        )
+        self.manager.gateway = new_client
+        self.manager.device_api = DeviceApi(new_client)
+        self.manager.programs_api = ProgramApi(new_client)
+        self.manager.file_api = FileApi(new_client)
+        self.manager.uploader = FileUploader(self.manager.file_api)
+        self.manager.screens = ScreenManager(self.manager.device_api)
+
+        n_controllers = len(chosen.device_ids)
+        self.statusbar.showMessage(
+            f"Connesso a {chosen.host}:{chosen.port} — {n_controllers} controller trovati",
+            5000,
+        )
+        # Ricarica la lista schermi con il nuovo gateway
+        self._refresh_screens()
         
     def on_screen_selected(self, device_id):
         if not device_id:
@@ -216,19 +333,33 @@ class MainWindow(QMainWindow):
         self.push_dialog.setModal(True)
         self.push_dialog.show()
         
-        sw = self.preview_area.canvas.screen_w
-        sh = self.preview_area.canvas.screen_h
+        sw, sh = self._get_screen_dimensions()
+        pres_uuid = self.active_presentation_uuid
         
-        self.push_worker = PlaylistPushWorker(self.manager, self.active_screen_id, pres_data, sw, sh)
+        all_pres_data = list(self.presentations_cache[self.active_screen_id].values())
+
+        # "Invia a Schermo" usa replace con tutto il payload locale
+        self.push_worker = PlaylistPushWorker(
+            self.manager, self.active_screen_id, all_pres_data, sw, sh, method="replace", active_uuid=pres_uuid
+        )
         
         def on_prog(msg):
             self.push_dialog.setLabelText(msg)
-            # make it pulse visually
             self.push_dialog.setValue((self.push_dialog.value() + 10) % 100)
             
         def on_done():
             self.push_dialog.setValue(100)
-            QMessageBox.information(self, "Successo", "Programma inviato al dispositivo!")
+            # Aggiorna il tracking con tutte le presentazioni appena inviate
+            if self.active_screen_id not in self._device_uuids:
+                self._device_uuids[self.active_screen_id] = set()
+            for p in all_pres_data:
+                if p.get("items"):
+                    self._device_uuids[self.active_screen_id].add(p["uuid"])
+            
+            QMessageBox.information(
+                self, "In onda!",
+                f"La presentazione '{pres_data.get('name', '')}' è ora attiva sul controller."
+            )
             
         def on_err(msg):
             self.push_dialog.cancel()
@@ -251,18 +382,25 @@ class MainWindow(QMainWindow):
         self.prog_worker = ProgramFetchWorker(self.manager, screen_id)
         
         def on_programs(programs, s_id):
-            self.statusbar.showMessage(f"Trovati {len(programs)} programmi", 3000)
+            # MERGE: i programmi del device vengono aggiunti/aggiornati nella cache locale
+            # senza mai rimuovere le presentazioni create localmente.
+            # La cache locale è la fonte di verità per la sidebar.
             cache = self.presentations_cache.setdefault(s_id, {})
-            new_cache = {}
+            device_uuids: set[str] = set()
             for p in programs:
                 uid = p.get("uuid")
                 name = p.get("name")
                 existing = cache.get(uid, {"items": []})
-                new_cache[uid] = {"uuid": uid, "name": name, "items": existing.get("items", [])}
-            self.presentations_cache[s_id] = new_cache
-            if self.active_presentation_uuid and self.active_presentation_uuid not in new_cache:
-                self.on_presentation_selected("")
-            self.sidebar.set_presentations(list(new_cache.values()))
+                cache[uid] = {"uuid": uid, "name": name, "items": existing.get("items", [])}
+                device_uuids.add(uid)
+            self._device_uuids[s_id] = device_uuids
+            n_local = len(cache) - len(device_uuids)
+            msg = f"Trovati {len(device_uuids)} programmi sul device"
+            if n_local > 0:
+                msg += f" + {n_local} locali"
+            self.statusbar.showMessage(msg, 3000)
+            self._save_cache()  # Salva il merge su file
+            self.sidebar.set_presentations(list(cache.values()))
 
         def on_error(err):
             self.statusbar.showMessage(f"Errore lettura programmi")
@@ -279,6 +417,7 @@ class MainWindow(QMainWindow):
             new_uuid = str(uuid.uuid4())
             screen_pres = self.presentations_cache.setdefault(self.active_screen_id, {})
             screen_pres[new_uuid] = {"uuid": new_uuid, "name": name, "items": []}
+            self._save_cache()
             self.sidebar.set_presentations(list(screen_pres.values()))
             
     def on_presentation_selected(self, pres_uuid):
@@ -339,6 +478,7 @@ class MainWindow(QMainWindow):
         pres = self.presentations_cache[self.active_screen_id].get(self.active_presentation_uuid)
         if not pres: return
         pres["items"].append(item_data)
+        self._save_cache()
         self.on_presentation_selected(self.active_presentation_uuid) # Refresh visual
         self.statusbar.showMessage("Nuovo livello aggiunto", 3000)
 
@@ -379,13 +519,90 @@ class MainWindow(QMainWindow):
             if self.active_presentation_uuid == uuid_id:
                 self.on_presentation_selected("")
             self.sidebar.set_presentations(list(self.presentations_cache[self.active_screen_id].values()))
-            
-            self.statusbar.showMessage("Cancellazione dal dispositivo...")
-            from app.ui.workers import ProgramRemoveWorker
-            self._rem_worker = ProgramRemoveWorker(self.manager, self.active_screen_id, [uuid_id])
-            self._rem_worker.finished.connect(lambda: self.statusbar.showMessage("Presentazione eliminata", 3000))
-            self._rem_worker.error.connect(lambda e: QMessageBox.warning(self, "Errore Elimina", e))
-            self._rem_worker.start()
+
+            # Chiama l'API di rimozione SOLO se la presentazione esiste sul device.
+            # Le presentazioni create localmente ma mai inviate non hanno un UUID sul controller.
+            is_on_device = uuid_id in self._device_uuids.get(self.active_screen_id, set())
+            if is_on_device:
+                self.statusbar.showMessage("Cancellazione dal dispositivo...")
+                from app.ui.workers import ProgramRemoveWorker
+                self._rem_worker = ProgramRemoveWorker(self.manager, self.active_screen_id, [uuid_id])
+                self._rem_worker.finished.connect(lambda: self._on_delete_done(self.active_screen_id, uuid_id))
+                self._rem_worker.error.connect(lambda e: QMessageBox.warning(self, "Errore Elimina", e))
+                self._rem_worker.start()
+            else:
+                self.statusbar.showMessage("Presentazione locale eliminata", 3000)
+
+    def _on_delete_done(self, screen_id: str, uuid_id: str) -> None:
+        """Callback post-delete: rimuove UUID dal tracking device e aggiorna status."""
+        self._device_uuids.get(screen_id, set()).discard(uuid_id)
+        self.statusbar.showMessage("Presentazione eliminata dal dispositivo", 3000)
+
+    def on_presentation_activate_requested(self, uuid_id: str) -> None:
+        """Invia la presentazione selezionata come unica attiva sul device (method=replace).
+
+        Usa ``replace`` quindi TUTTE le presentazioni esistenti sul controller vengono
+        sostituite da questa sola. Le altre rimangono salvate localmente nell'app.
+        """
+        if not self.active_screen_id: return
+        pres_data = self.presentations_cache.get(self.active_screen_id, {}).get(uuid_id)
+        if not pres_data: return
+
+        if not pres_data.get("items"):
+            QMessageBox.warning(
+                self,
+                "Presentazione vuota",
+                "Aggiungi almeno un livello prima di mandare in onda la presentazione.",
+            )
+            return
+
+        from PyQt6.QtWidgets import QProgressDialog
+        self._activate_dialog = QProgressDialog("Avvio invio...", "Annulla", 0, 100, self)
+        self._activate_dialog.setWindowTitle("Manda in onda")
+        self._activate_dialog.setModal(True)
+        self._activate_dialog.show()
+
+        sw, sh = self._get_screen_dimensions()
+        all_pres_data = list(self.presentations_cache[self.active_screen_id].values())
+
+        # method="replace" → invia tutte, ma attiva solo questa
+        self._activate_worker = PlaylistPushWorker(
+            self.manager, self.active_screen_id, all_pres_data, sw, sh, method="replace", active_uuid=uuid_id
+        )
+
+        def on_prog(msg):
+            self._activate_dialog.setLabelText(msg)
+            self._activate_dialog.setValue((self._activate_dialog.value() + 10) % 100)
+
+        def on_done():
+            self._activate_dialog.setValue(100)
+            # Aggiorna il tracking
+            if self.active_screen_id not in self._device_uuids:
+                self._device_uuids[self.active_screen_id] = set()
+            for p in all_pres_data:
+                if p.get("items"):
+                    self._device_uuids[self.active_screen_id].add(p["uuid"])
+                    
+            self.statusbar.showMessage(f"'​{pres_data['name']}' ora in onda", 5000)
+            QMessageBox.information(
+                self, "In onda!",
+                f"La presentazione '​{pres_data['name']}' è ora l'unica attiva sul controller."
+            )
+
+        def on_err(msg):
+            self._activate_dialog.cancel()
+            QMessageBox.critical(self, "Errore", f"Impossibile mandare in onda:\n{msg}")
+
+        self._activate_worker.progress.connect(on_prog)
+        self._activate_worker.finished.connect(on_done)
+        self._activate_worker.error.connect(on_err)
+        self._activate_worker.start()
+
+    def _get_screen_dimensions(self) -> tuple[int, int]:
+        """Restituisce le dimensioni (w, h) dello schermo attivo dalla cache."""
+        if hasattr(self, "screen_dimensions") and self.active_screen_id:
+            return self.screen_dimensions.get(self.active_screen_id, (128, 64))
+        return (128, 64)
 
     def on_layer_edit_requested(self, idx):
         if not self.active_screen_id or not self.active_presentation_uuid: return
@@ -412,6 +629,7 @@ class MainWindow(QMainWindow):
         
         def on_item_edited(new_data):
             items[idx] = new_data
+            self._save_cache()  # Salva modifica livello
             self.on_presentation_selected(self.active_presentation_uuid)
             self.statusbar.showMessage(f"Livello {idx} modificato", 3000)
             
@@ -428,6 +646,7 @@ class MainWindow(QMainWindow):
         ret = QMessageBox.question(self, "Conferma", "Vuoi eliminare il livello selezionato?")
         if ret == QMessageBox.StandardButton.Yes:
             del items[idx]
+            self._save_cache()  # Salva eliminazione livello
             self.on_presentation_selected(self.active_presentation_uuid)
 
     # --- Window State ---
@@ -435,9 +654,30 @@ class MainWindow(QMainWindow):
         settings = QSettings("StarLed", "SLPlayer")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
+        # Salva la cache delle presentazioni su file
+        self._save_cache()
         super().closeEvent(event)
         
     def restore_settings(self):
         settings = QSettings("StarLed", "SLPlayer")
         if settings.value("geometry"): self.restoreGeometry(settings.value("geometry"))
         if settings.value("windowState"): self.restoreState(settings.value("windowState"))
+        
+        # Ripristina la cache delle presentazioni da file JSON locale
+        if os.path.exists("presentations_cache.json"):
+            try:
+                with open("presentations_cache.json", "r", encoding="utf-8") as f:
+                    self.presentations_cache = json.load(f)
+            except Exception as e:
+                print(f"Errore caricamento file cache presentazioni: {e}")
+                self.presentations_cache = {}
+        else:
+            self.presentations_cache = {}
+
+    def _save_cache(self):
+        """Salva la cache su file JSON per persistenza immediata vera."""
+        try:
+            with open("presentations_cache.json", "w", encoding="utf-8") as f:
+                json.dump(self.presentations_cache, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Errore salvataggio file cache presentazioni: {e}")

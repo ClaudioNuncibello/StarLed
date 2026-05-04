@@ -52,6 +52,7 @@ class Sidebar(QWidget):
     presentation_edit_requested = pyqtSignal(str)
     presentation_duplicate_requested = pyqtSignal(str)
     presentation_delete_requested = pyqtSignal(str)
+    presentation_activate_requested = pyqtSignal(str)  # "Manda in onda" — replace sul device
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -254,10 +255,14 @@ class Sidebar(QWidget):
         uuid = item.data(Qt.ItemDataRole.UserRole)
         
         menu = QMenu()
+        activate_act = menu.addAction("▶ Manda in onda")
+        activate_act.setToolTip("Invia questa presentazione al dispositivo come unica attiva")
+        menu.addSeparator()
         mod_act = menu.addAction("Rinomina")
         dup_act = menu.addAction("Duplica")
         del_act = menu.addAction("Elimina")
         
+        activate_act.triggered.connect(lambda: self.presentation_activate_requested.emit(uuid))
         mod_act.triggered.connect(lambda: self.presentation_edit_requested.emit(uuid))
         dup_act.triggered.connect(lambda: self.presentation_duplicate_requested.emit(uuid))
         del_act.triggered.connect(lambda: self.presentation_delete_requested.emit(uuid))

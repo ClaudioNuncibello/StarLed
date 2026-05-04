@@ -121,13 +121,15 @@ class PlaylistPushWorker(QThread):
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, manager, device_id, presentation_data, screen_w, screen_h):
+    def __init__(self, manager, device_id, presentation_data, screen_w, screen_h, method="append", active_uuid=None):
         super().__init__()
         self.manager = manager
         self.device_id = device_id
-        self.presentation_data = presentation_data
+        self.presentation_data = presentation_data  # Può essere un dict o una list[dict]
         self.screen_w = screen_w
         self.screen_h = screen_h
+        self.method = method  # "append" = accoda, "replace" = manda in onda esclusivo
+        self.active_uuid = active_uuid
 
     def run(self):
         try:
@@ -136,72 +138,105 @@ class PlaylistPushWorker(QThread):
                 Presentation, Area, TextItem, ImageItem, VideoItem, DigitalClockItem, Effect, Font
             )
             
-            items_data = self.presentation_data.get("items", [])
-            pres_name = self.presentation_data.get("name", "Playlist")
-            
-            built_items = []
-            
-            for i, item in enumerate(items_data):
-                itype = item.get("type", "").lower()
-                effect_cfg = item.get("effect", {})
-                effect = Effect(type=effect_cfg.get("type", 0), speed=effect_cfg.get("speed", 5), hold=effect_cfg.get("hold", 5000))
+            def build_presentation(pres_data: dict, is_active: bool) -> Presentation | None:
+                items_data = pres_data.get("items", [])
+                pres_name = pres_data.get("name", "Playlist")
                 
-                if itype in ("image", "video"):
-                    file_path = item.get("file")
-                    if file_path and os.path.exists(file_path):
-                        self.progress.emit(f"Upload media: {os.path.basename(file_path)}...")
-                        up_res = self.manager.uploader.upload(self.device_id, file_path)
-                        
-                        if itype == "image":
-                            fit = item.get("fit", "stretch")
-                            built_items.append(ImageItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, fit=fit, effect=effect))
-                        else:
-                            built_items.append(VideoItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, effect=effect))
-                    else:
-                        print(f"Skipping empty or missing file: {file_path}")
-                elif itype == "text":
-                    text_str = item.get("string", "")
-                    font_cfg = item.get("font", {})
-                    font = Font(
-                        name=font_cfg.get("name", "Arial"),
-                        size=font_cfg.get("size", 14),
-                        bold=font_cfg.get("bold", False),
-                        italic=font_cfg.get("italic", False),
-                        underline=font_cfg.get("underline", False),
-                        color=font_cfg.get("color", "#ffffff")
-                    )
-                    multi_line = item.get("multi_line", False)
-                    play_text = item.get("play_text", False)
-                    align_str = item.get("alignment", "middle,center")
-                    parts = align_str.split(",")
-                    valign = parts[0] if len(parts) > 0 else "middle"
-                    align = parts[1] if len(parts) > 1 else "center"
+                built_items = []
+                for i, item in enumerate(items_data):
+                    itype = item.get("type", "").lower()
+                    effect_cfg = item.get("effect", {})
+                    effect = Effect(type=effect_cfg.get("type", 0), speed=effect_cfg.get("speed", 5), hold=effect_cfg.get("hold", 5000))
                     
-                    built_items.append(TextItem(
-                        string=text_str,
-                        font=font,
-                        effect=effect,
-                        multiLine=multi_line,
-                        alignment=align,
-                        valignment=valign,
-                        PlayText=play_text
-                    ))
-                elif itype in ("digitalclock", "clock", "dialclock"):
-                    built_items.append(DigitalClockItem())
+                    if itype in ("image", "video"):
+                        file_path = item.get("file")
+                        if file_path and os.path.exists(file_path):
+                            self.progress.emit(f"Upload media: {os.path.basename(file_path)}...")
+                            up_res = self.manager.uploader.upload(self.device_id, file_path)
+                            
+                            if itype == "image":
+                                fit = item.get("fit", "stretch")
+                                built_items.append(ImageItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, fit=fit, effect=effect))
+                            else:
+                                built_items.append(VideoItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, effect=effect))
+                        else:
+                            print(f"Skipping empty or missing file: {file_path}")
+                    elif itype == "text":
+                        text_str = item.get("string", "")
+                        font_cfg = item.get("font", {})
+                        font = Font(
+                            name=font_cfg.get("name", "Arial"),
+                            size=font_cfg.get("size", 14),
+                            bold=font_cfg.get("bold", False),
+                            italic=font_cfg.get("italic", False),
+                            underline=font_cfg.get("underline", False),
+                            color=font_cfg.get("color", "#ffffff")
+                        )
+                        multi_line = item.get("multi_line", False)
+                        play_text = item.get("play_text", False)
+                        align_str = item.get("alignment", "middle,center")
+                        parts = align_str.split(",")
+                        valign = parts[0] if len(parts) > 0 else "middle"
+                        align = parts[1] if len(parts) > 1 else "center"
+                        
+                        built_items.append(TextItem(
+                            string=text_str,
+                            font=font,
+                            effect=effect,
+                            multiLine=multi_line,
+                            alignment=align,
+                            valignment=valign,
+                            PlayText=play_text
+                        ))
+                    elif itype in ("digitalclock", "clock", "dialclock"):
+                        built_items.append(DigitalClockItem())
 
-            if not built_items:
-                self.error.emit("Nessun livello valido per l'invio.")
-                return
+                if not built_items:
+                    return None
 
-            areas = []
-            built_items.reverse()
-            for item in built_items:
-                areas.append(Area(0, 0, self.screen_w, self.screen_h, item=[item]))
+                areas = []
+                built_items.reverse()
+                for item in built_items:
+                    areas.append(Area(0, 0, self.screen_w, self.screen_h, item=[item]))
 
-            pres = Presentation(name=pres_name, area=areas, uuid=self.presentation_data.get("uuid"))
-            
-            self.progress.emit("Invio programma al dispositivo...")
-            self.manager.programs_api.send_presentation(self.device_id, pres)
+                pres = Presentation(name=pres_name, area=areas, uuid=pres_data.get("uuid"))
+                if not is_active:
+                    pres.play_control = {"date": [{"start": "2000-01-01", "end": "2000-01-02"}]}
+                return pres
+
+            if self.method == "replace":
+                self.progress.emit("Elaborazione del nuovo palinsesto...")
+                if isinstance(self.presentation_data, list):
+                    all_pres_data = self.presentation_data
+                else:
+                    all_pres_data = [self.presentation_data]
+                    
+                built_presentations = []
+                for p_data in all_pres_data:
+                    # Includi solo se ha elementi e un UUID valido
+                    if not p_data.get("items"):
+                        continue
+                    
+                    is_active = (p_data.get("uuid") == self.active_uuid)
+                    pres = build_presentation(p_data, is_active)
+                    if pres:
+                        built_presentations.append(pres)
+                
+                if not built_presentations:
+                    self.error.emit("Nessuna presentazione valida da inviare.")
+                    return
+                
+                self.progress.emit(f"Invio di {len(built_presentations)} programmi al dispositivo...")
+                self.manager.programs_api.send_presentations(self.device_id, built_presentations, method="replace")
+                
+            else:
+                self.progress.emit("Invio programma al dispositivo...")
+                pres = build_presentation(self.presentation_data, is_active=True)
+                if not pres:
+                    self.error.emit("Nessun livello valido per l'invio.")
+                    return
+                self.manager.programs_api.send_presentation(self.device_id, pres, method="append")
+                
             self.finished.emit()
             
         except Exception as e:
@@ -254,3 +289,50 @@ class ProgramRenameWorker(QThread):
         except Exception as e:
             msg = getattr(e, "message", str(e))
             self.error.emit(f"Errore rinomina: {msg}")
+
+
+class DiscoveryWorker(QThread):
+    """Scansiona la subnet locale alla ricerca di gateway Huidu (porta 30080).
+
+    Emette ``finished`` con la lista di ``DiscoveredGateway`` trovati,
+    o ``error`` in caso di problemi di rete.
+
+    Example::
+
+        worker = DiscoveryWorker(sdk_key="k", sdk_secret="s")
+        worker.finished.connect(on_gateways_found)
+        worker.error.connect(on_error)
+        worker.start()
+    """
+
+    finished = pyqtSignal(list)   # list[DiscoveredGateway]
+    error = pyqtSignal(str)
+    progress = pyqtSignal(str)    # messaggio di stato opzionale
+
+    def __init__(self, sdk_key: str, sdk_secret: str, *, subnet: str | None = None):
+        """Inizializza il worker con le credenziali SDK.
+
+        Args:
+            sdk_key: Chiave SDK Huidu.
+            sdk_secret: Segreto SDK Huidu.
+            subnet: Subnet CIDR opzionale (es. ``"192.168.1.0/24"``).
+                    Se ``None``, viene rilevata automaticamente.
+        """
+        super().__init__()
+        self._sdk_key = sdk_key
+        self._sdk_secret = sdk_secret
+        self._subnet = subnet
+
+    def run(self) -> None:
+        try:
+            from app.api.discovery import discover_gateways
+            self.progress.emit("Scansione rete in corso...")
+            gateways = discover_gateways(
+                sdk_key=self._sdk_key,
+                sdk_secret=self._sdk_secret,
+                subnet=self._subnet,
+            )
+            self.finished.emit(gateways)
+        except Exception as e:
+            self.error.emit(f"Errore discovery: {e}")
+

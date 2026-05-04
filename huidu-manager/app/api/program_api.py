@@ -51,21 +51,22 @@ class ProgramApi:
         device_id: str,
         presentation: Presentation,
         *,
-        method: str = "replace",
+        method: str = "append",
     ) -> bool:
-        """Invia una presentazione allo schermo, sostituendo quelle esistenti.
+        """Invia una presentazione allo schermo.
 
         Endpoint: ``POST /api/program/``
 
         Il payload viene costruito automaticamente da ``presentation.to_dict()``.
-        Il metodo ``replace`` cancella tutti i programmi presenti sul dispositivo
-        e li sostituisce con quello inviato.
+        Il metodo default ``append`` aggiunge la presentazione senza toccare
+        quelle già presenti sul dispositivo. Usare ``method="replace"`` solo
+        se si vuole cancellare tutte le presentazioni esistenti.
 
         Args:
             device_id: ID del dispositivo destinatario.
             presentation: Oggetto ``Presentation`` da inviare.
-            method: Metodo API (``"replace"`` o ``"append"``).
-                    Default ``"replace"``.
+            method: Metodo API (``"append"`` o ``"replace"``).
+                    Default ``"append"`` — aggiunge senza sovrascrivere.
 
         Returns:
             ``True`` se l'invio è andato a buon fine.
@@ -91,6 +92,53 @@ class ProgramApi:
         self._check_device_response(response, device_id)
         logger.info(
             "Presentazione %r inviata con successo a %s.", presentation.name, device_id
+        )
+        return True
+
+    def send_presentations(
+        self,
+        device_id: str,
+        presentations: list[Presentation],
+        *,
+        method: str = "replace",
+    ) -> bool:
+        """Invia una lista di presentazioni allo schermo.
+
+        Endpoint: ``POST /api/program/``
+
+        Args:
+            device_id: ID del dispositivo destinatario.
+            presentations: Lista di oggetti ``Presentation`` da inviare.
+            method: Metodo API (``"append"`` o ``"replace"``).
+                    Default ``"replace"`` — sostituisce tutte le presentazioni sul device
+                    con quelle fornite in questa lista.
+
+        Returns:
+            ``True`` se l'invio è andato a buon fine.
+            
+        Raises:
+            HuiduApiError: Se il gateway restituisce un errore.
+        """
+        if not presentations:
+            return True
+
+        payload = {
+            "method": method,
+            "id": device_id,
+            "data": [p.to_dict() for p in presentations],
+        }
+        body_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        logger.info(
+            "send_presentations | device=%s method=%s count=%d body_len=%d",
+            device_id,
+            method,
+            len(presentations),
+            len(body_str),
+        )
+        response = self._client.post("/api/program/", payload)
+        self._check_device_response(response, device_id)
+        logger.info(
+            "%d presentazioni inviate con successo a %s.", len(presentations), device_id
         )
         return True
 
@@ -147,6 +195,42 @@ class ProgramApi:
             ValueError: Se la presentazione ha struttura non valida.
         """
         return self.send_presentation(device_id, presentation, method="append")
+
+    def update_programs_partial(self, device_id: str, updates: list[dict]) -> bool:
+        """Esegue un update parziale su uno o più programmi (es. solo playControl).
+        
+        Permette di modificare proprietà come lo scheduling senza dover
+        reinviare l'intero payload con aree e file media.
+        
+        Args:
+            device_id: ID del dispositivo destinatario.
+            updates: Lista di dizionari, ognuno contenente almeno 'uuid'
+                     e i campi da aggiornare (es. 'playControl').
+                     
+        Returns:
+            ``True`` se l'invio è andato a buon fine.
+            
+        Raises:
+            HuiduApiError: Se il gateway restituisce un errore o rifiuta il payload parziale.
+        """
+        if not updates:
+            return True
+            
+        payload = {
+            "method": "update",
+            "id": device_id,
+            "data": updates,
+        }
+        body_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        logger.info(
+            "update_programs_partial | device=%s items=%d body_len=%d",
+            device_id,
+            len(updates),
+            len(body_str),
+        )
+        response = self._client.post("/api/program/", payload)
+        self._check_device_response(response, device_id)
+        return True
 
     def remove_presentation(
         self,
