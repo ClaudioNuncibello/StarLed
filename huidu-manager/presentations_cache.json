@@ -1,0 +1,52 @@
+{
+    "C16L-D25-00724": {
+        "9bd6a858-99f4-4867-af32-7a2e4a9f818c": {
+            "uuid": "9bd6a858-99f4-4867-af32-7a2e4a9f818c",
+            "name": "sazda",
+            "items": [
+                {
+                    "type": "image",
+                    "file": "C:/Users/User/Pictures/Screenshots/Screenshot 2026-04-30 202708.png",
+                    "fit": "stretch",
+                    "effect": {
+                        "type": 0,
+                        "speed": 4,
+                        "hold": 5000
+                    }
+                }
+            ]
+        },
+        "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93": {
+            "uuid": "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93",
+            "name": "dsasd",
+            "items": [
+                {
+                    "type": "image",
+                    "file": "C:/Users/User/Pictures/Screenshots/Screenshot 2026-04-21 113246.png",
+                    "fit": "stretch",
+                    "effect": {
+                        "type": 0,
+                        "speed": 4,
+                        "hold": 5000
+                    }
+                }
+            ]
+        },
+        "74091b17-2667-46fe-8011-0b3c5313c027": {
+            "uuid": "74091b17-2667-46fe-8011-0b3c5313c027",
+            "name": "sdasdasda",
+            "items": [
+                {
+                    "type": "image",
+                    "file": "C:/Users/User/Pictures/Screenshots/Screenshot 2026-04-29 123900.png",
+                    "fit": "stretch",
+                    "effect": {
+                        "type": 0,
+                        "speed": 4,
+                        "hold": 5000
+                    }
+                }
+            ]
+        }
+    }
+}

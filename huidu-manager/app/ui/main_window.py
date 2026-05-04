@@ -388,7 +388,9 @@ class MainWindow(QMainWindow):
             cache = self.presentations_cache.setdefault(s_id, {})
             device_uuids: set[str] = set()
             for p in programs:
-                uid = p.get("uuid")
+                raw_uid = p.get("uuid", "")
+                if not raw_uid: continue
+                uid = str(raw_uid).lower()
                 name = p.get("name")
                 existing = cache.get(uid, {"items": []})
                 cache[uid] = {"uuid": uid, "name": name, "items": existing.get("items", [])}
@@ -667,7 +669,18 @@ class MainWindow(QMainWindow):
         if os.path.exists("presentations_cache.json"):
             try:
                 with open("presentations_cache.json", "r", encoding="utf-8") as f:
-                    self.presentations_cache = json.load(f)
+                    raw_cache = json.load(f)
+                    
+                    # Normalizza tutti gli UUID in minuscolo per evitare duplicati
+                    normalized_cache = {}
+                    for screen_id, screen_pres in raw_cache.items():
+                        normalized_cache[screen_id] = {}
+                        for uid, pres_data in screen_pres.items():
+                            norm_uid = str(uid).lower()
+                            pres_data["uuid"] = norm_uid
+                            normalized_cache[screen_id][norm_uid] = pres_data
+                            
+                    self.presentations_cache = normalized_cache
             except Exception as e:
                 print(f"Errore caricamento file cache presentazioni: {e}")
                 self.presentations_cache = {}
