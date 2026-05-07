@@ -16,6 +16,7 @@ from app.ui.dialogs.image_dialog import ImageDialog
 from app.ui.dialogs.video_dialog import VideoDialog
 from app.ui.dialogs.text_dialog import TextDialog
 from app.ui.dialogs.clock_dialog import ClockDialog
+from app.ui.dialogs.schedule_dialog import ScheduleDialog
 from app.ui.workers import (
     DeviceListWorker, ProgramFetchWorker, ProgramPushWorker,
     FileUploadWorker, PlaylistPushWorker, DiscoveryWorker,
@@ -88,13 +89,16 @@ class MainWindow(QMainWindow):
         self.sidebar.presentation_duplicate_requested.connect(self.on_presentation_duplicate_requested)
         self.sidebar.presentation_delete_requested.connect(self.on_presentation_delete_requested)
         self.sidebar.presentation_activate_requested.connect(self.on_presentation_activate_requested)
+        self.sidebar.presentation_disable_requested.connect(self.on_presentation_disable_requested)
         
         # Toolbar Actions
         self.toolbar.new_playlist_requested.connect(self.create_playlist)
         self.toolbar.new_item_requested.connect(self.open_item_dialog)
         self.toolbar.screen_settings_requested.connect(self.open_screen_settings)
         self.toolbar.push_playlist_requested.connect(self.on_push_playlist_requested)
+        self.toolbar.schedule_requested.connect(self.open_schedule_dialog)
         self.toolbar.discovery_requested.connect(self._run_discovery)
+        self.toolbar.clear_screen_requested.connect(self.on_clear_screen_requested)
 
     # --- Slots Gestione Schermi ---
     def on_screens_refresh_ui_triggered(self):
@@ -322,10 +326,40 @@ class MainWindow(QMainWindow):
         self.props_worker.error.connect(on_err)
         self.props_worker.start()
 
+    def open_schedule_dialog(self):
+        if not self.active_screen_id: return
+        dlg = ScheduleDialog(self.active_screen_id, self.presentations_cache[self.active_screen_id], self.manager, self)
+        if dlg.exec():
+            # Aggiorna la cache locale con gli orari scelti
+            self.presentations_cache[self.active_screen_id] = dlg.programs
+            
+            # Applica la modalità "push_palinsesto" (azzera tutto il resto)
+            sw, sh = self._get_screen_dimensions()
+            from PyQt6.QtWidgets import QProgressDialog
+            self._sch_dialog = QProgressDialog("Applicazione palinsesto...", "Annulla", 0, 100, self)
+            self._sch_dialog.setWindowTitle("Sincronizza")
+            self._sch_dialog.setModal(True)
+            self._sch_dialog.show()
+            
+            self._sch_worker = PlaylistPushWorker(
+                self.manager, self.active_screen_id, self.presentations_cache[self.active_screen_id], sw, sh, action="push_palinsesto"
+            )
+            def on_prog(msg): self._sch_dialog.setLabelText(msg)
+            def on_done():
+                self._sch_dialog.setValue(100)
+                self._save_cache()
+                QMessageBox.information(self, "Palinsesto", "Il palinsesto è stato inviato. Le altre playlist sono state disabilitate.")
+            def on_err(msg):
+                self._sch_dialog.cancel()
+                QMessageBox.critical(self, "Errore", f"Impossibile inviare palinsesto:\n{msg}")
+            
+            self._sch_worker.progress.connect(on_prog)
+            self._sch_worker.finished.connect(on_done)
+            self._sch_worker.error.connect(on_err)
+            self._sch_worker.start()
+
     def on_push_playlist_requested(self):
-        if not self.active_screen_id or not self.active_presentation_uuid: return
-        pres_data = self.presentations_cache[self.active_screen_id].get(self.active_presentation_uuid)
-        if not pres_data: return
+        if not self.active_screen_id: return
         
         from PyQt6.QtWidgets import QProgressDialog
         self.push_dialog = QProgressDialog("Avvio caricamento...", "Annulla", 0, 100, self)
@@ -334,13 +368,11 @@ class MainWindow(QMainWindow):
         self.push_dialog.show()
         
         sw, sh = self._get_screen_dimensions()
-        pres_uuid = self.active_presentation_uuid
         
-        all_pres_data = list(self.presentations_cache[self.active_screen_id].values())
+        cache_dict = self.presentations_cache[self.active_screen_id]
 
-        # "Invia a Schermo" usa replace con tutto il payload locale
         self.push_worker = PlaylistPushWorker(
-            self.manager, self.active_screen_id, all_pres_data, sw, sh, method="replace", active_uuid=pres_uuid
+            self.manager, self.active_screen_id, cache_dict, sw, sh, action="sincronizza"
         )
         
         def on_prog(msg):
@@ -349,16 +381,17 @@ class MainWindow(QMainWindow):
             
         def on_done():
             self.push_dialog.setValue(100)
+            self._save_cache() # Salva lo stato
             # Aggiorna il tracking con tutte le presentazioni appena inviate
             if self.active_screen_id not in self._device_uuids:
                 self._device_uuids[self.active_screen_id] = set()
-            for p in all_pres_data:
+            for p in self.presentations_cache[self.active_screen_id].values():
                 if p.get("items"):
                     self._device_uuids[self.active_screen_id].add(p["uuid"])
             
             QMessageBox.information(
-                self, "In onda!",
-                f"La presentazione '{pres_data.get('name', '')}' è ora attiva sul controller."
+                self, "Sincronizzato",
+                "Il carosello e il palinsesto sono stati inviati al controller."
             )
             
         def on_err(msg):
@@ -391,9 +424,29 @@ class MainWindow(QMainWindow):
                 raw_uid = p.get("uuid", "")
                 if not raw_uid: continue
                 uid = str(raw_uid).lower()
+                
+                # Ignora frammenti carosello generati dinamicamente per il dominio della scena
+                if uid.startswith("auto-"): 
+                    continue
+                    
                 name = p.get("name")
+                play_ctrl = p.get("playControl")
                 existing = cache.get(uid, {"items": []})
-                cache[uid] = {"uuid": uid, "name": name, "items": existing.get("items", [])}
+                
+                # Infer status
+                status = existing.get("status")
+                if play_ctrl is not None:
+                    status = "programmed"
+                elif status not in ("live", "disabled", "programmed"):
+                    status = "live"
+                        
+                cache[uid] = {
+                    "uuid": uid, 
+                    "name": name, 
+                    "items": existing.get("items", []),
+                    "playControl": play_ctrl,
+                    "status": status
+                }
                 device_uuids.add(uid)
             self._device_uuids[s_id] = device_uuids
             n_local = len(cache) - len(device_uuids)
@@ -416,9 +469,28 @@ class MainWindow(QMainWindow):
         if not self.active_screen_id: return
         name, ok = QInputDialog.getText(self, "Nuova Playlist", "Nome:")
         if ok and name:
+            msgBox = QMessageBox(self)
+            msgBox.setWindowTitle("Azione Playlist")
+            msgBox.setText("Vuoi mettere in azione questa playlist (rendendola attiva) o salvarla solo in memoria?")
+            btn_live = msgBox.addButton("Manda in onda ora", QMessageBox.ButtonRole.AcceptRole)
+            btn_disabled = msgBox.addButton("Salva in memoria", QMessageBox.ButtonRole.RejectRole)
+            msgBox.addButton("Annulla", QMessageBox.ButtonRole.DestructiveRole)
+            msgBox.exec()
+            
+            if msgBox.clickedButton() not in (btn_live, btn_disabled):
+                return
+                
+            new_status = "live" if msgBox.clickedButton() == btn_live else "disabled"
             new_uuid = str(uuid.uuid4())
             screen_pres = self.presentations_cache.setdefault(self.active_screen_id, {})
-            screen_pres[new_uuid] = {"uuid": new_uuid, "name": name, "items": []}
+            
+            if new_status == "live":
+                # La mettiamo in live. Se si decide che "Manda Live" disabilita le altre (se vogliamo), lo si fa qui. 
+                # Ma il backend "manda_live" le mette solo in coda e disabilita le programmate.
+                # Lo lasciamo semplicemente "live".
+                pass
+                        
+            screen_pres[new_uuid] = {"uuid": new_uuid, "name": name, "items": [], "playControl": None, "status": new_status}
             self._save_cache()
             self.sidebar.set_presentations(list(screen_pres.values()))
             
@@ -508,6 +580,8 @@ class MainWindow(QMainWindow):
         new_pres = copy.deepcopy(pres)
         new_pres["uuid"] = str(uuid.uuid4())
         new_pres["name"] = new_pres["name"] + " (Copia)"
+        new_pres["playControl"] = None
+        new_pres["status"] = "parked"
         self.presentations_cache[self.active_screen_id][new_pres["uuid"]] = new_pres
         self.sidebar.set_presentations(list(self.presentations_cache[self.active_screen_id].values()))
 
@@ -565,11 +639,10 @@ class MainWindow(QMainWindow):
         self._activate_dialog.show()
 
         sw, sh = self._get_screen_dimensions()
-        all_pres_data = list(self.presentations_cache[self.active_screen_id].values())
+        cache_dict = self.presentations_cache[self.active_screen_id]
 
-        # method="replace" → invia tutte, ma attiva solo questa
         self._activate_worker = PlaylistPushWorker(
-            self.manager, self.active_screen_id, all_pres_data, sw, sh, method="replace", active_uuid=uuid_id
+            self.manager, self.active_screen_id, cache_dict, sw, sh, action="manda_live", target_uuid=uuid_id
         )
 
         def on_prog(msg):
@@ -578,18 +651,9 @@ class MainWindow(QMainWindow):
 
         def on_done():
             self._activate_dialog.setValue(100)
-            # Aggiorna il tracking
-            if self.active_screen_id not in self._device_uuids:
-                self._device_uuids[self.active_screen_id] = set()
-            for p in all_pres_data:
-                if p.get("items"):
-                    self._device_uuids[self.active_screen_id].add(p["uuid"])
-                    
+            self._save_cache() # Salva il nuovo stato "live" e "parked"
+            
             self.statusbar.showMessage(f"'​{pres_data['name']}' ora in onda", 5000)
-            QMessageBox.information(
-                self, "In onda!",
-                f"La presentazione '​{pres_data['name']}' è ora l'unica attiva sul controller."
-            )
 
         def on_err(msg):
             self._activate_dialog.cancel()
@@ -599,6 +663,71 @@ class MainWindow(QMainWindow):
         self._activate_worker.finished.connect(on_done)
         self._activate_worker.error.connect(on_err)
         self._activate_worker.start()
+
+    def on_presentation_disable_requested(self, uuid_id: str) -> None:
+        if not self.active_screen_id: return
+        pres_data = self.presentations_cache.get(self.active_screen_id, {}).get(uuid_id)
+        if not pres_data: return
+
+        from PyQt6.QtWidgets import QProgressDialog
+        self._disable_dialog = QProgressDialog("Disabilitazione...", "Annulla", 0, 100, self)
+        self._disable_dialog.setWindowTitle("Disabilita")
+        self._disable_dialog.setModal(True)
+        self._disable_dialog.show()
+
+        sw, sh = self._get_screen_dimensions()
+        cache_dict = self.presentations_cache[self.active_screen_id]
+
+        self._disable_worker = PlaylistPushWorker(
+            self.manager, self.active_screen_id, cache_dict, sw, sh, action="disabilita", target_uuid=uuid_id
+        )
+
+        def on_prog(msg): self._disable_dialog.setLabelText(msg)
+        def on_done():
+            self._disable_dialog.setValue(100)
+            self._save_cache()
+            self.statusbar.showMessage(f"'​{pres_data['name']}' disabilitata", 5000)
+        def on_err(msg):
+            self._disable_dialog.cancel()
+            QMessageBox.critical(self, "Errore", f"Impossibile disabilitare:\n{msg}")
+
+        self._disable_worker.progress.connect(on_prog)
+        self._disable_worker.finished.connect(on_done)
+        self._disable_worker.error.connect(on_err)
+        self._disable_worker.start()
+
+    def on_clear_screen_requested(self):
+        if not self.active_screen_id: return
+        
+        ret = QMessageBox.question(self, "Svuota Schermo", "Sei sicuro di voler fermare tutte le playlist sul display? Lo schermo diventerà nero.")
+        if ret != QMessageBox.StandardButton.Yes: return
+        
+        from PyQt6.QtWidgets import QProgressDialog
+        self._clear_dialog = QProgressDialog("Svuotamento...", "Annulla", 0, 100, self)
+        self._clear_dialog.setWindowTitle("Svuota Schermo")
+        self._clear_dialog.setModal(True)
+        self._clear_dialog.show()
+
+        sw, sh = self._get_screen_dimensions()
+        cache_dict = self.presentations_cache[self.active_screen_id]
+
+        self._clear_worker = PlaylistPushWorker(
+            self.manager, self.active_screen_id, cache_dict, sw, sh, action="svuota_schermo"
+        )
+
+        def on_prog(msg): self._clear_dialog.setLabelText(msg)
+        def on_done():
+            self._clear_dialog.setValue(100)
+            self._save_cache()
+            self.statusbar.showMessage("Schermo svuotato e nero", 5000)
+        def on_err(msg):
+            self._clear_dialog.cancel()
+            QMessageBox.critical(self, "Errore", f"Impossibile svuotare lo schermo:\n{msg}")
+
+        self._clear_worker.progress.connect(on_prog)
+        self._clear_worker.finished.connect(on_done)
+        self._clear_worker.error.connect(on_err)
+        self._clear_worker.start()
 
     def _get_screen_dimensions(self) -> tuple[int, int]:
         """Restituisce le dimensioni (w, h) dello schermo attivo dalla cache."""

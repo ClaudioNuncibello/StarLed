@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 from PyQt6.QtCore import Qt, QRect
 
@@ -119,33 +119,35 @@ class PreviewArea(QWidget):
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        # Header Canvas Label Overlay Like
-        top_layout = QHBoxLayout()
-        self.lbl_info = QLabel("")
-        self.lbl_info.setStyleSheet("color: #888888; font-size: 10pt;")
-        
-        self.btn_screenshot = QPushButton("📷 Screenshot reale")
-        self.btn_screenshot.setVisible(False) # Visibile solo se online
-        
-        top_layout.addWidget(self.lbl_info)
-        top_layout.addStretch()
-        top_layout.addWidget(self.btn_screenshot)
-        layout.addLayout(top_layout)
-        
-        # Canvas reale
+        # Canvas reale (Anteprima)
         self.canvas = CanvasWidget()
-        layout.addWidget(self.canvas)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.canvas, 1)
+        
+        # Barra Info (Misure Schermo)
+        self.info_bar = QWidget()
+        self.info_bar.setObjectName("InfoBar")
+        self.info_bar.setStyleSheet("background-color: #1e1e1e; border-top: 1px solid #333333;")
+        self.info_bar.setFixedHeight(24)
+        
+        info_layout = QHBoxLayout(self.info_bar)
+        info_layout.setContentsMargins(10, 0, 10, 0)
+        
+        self.lbl_info = QLabel("")
+        self.lbl_info.setStyleSheet("color: #888888; font-size: 9pt;")
+        info_layout.addWidget(self.lbl_info, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        layout.addWidget(self.info_bar, 0)
         
     def update_screen_info(self, width, height, is_online):
         self.canvas.set_screen_size(width, height)
-        self.lbl_info.setText(f"Schermo: {width}x{height} px")
-        self.btn_screenshot.setVisible(is_online)
+        self.lbl_info.setText(f"Dimensioni schermo: {width}x{height} px")
         
     def clear_screen_info(self):
         self.lbl_info.setText("")
-        self.btn_screenshot.setVisible(False)
         self.canvas.clear_screen()
         
     def update_layers(self, items, selected_idx=-1):

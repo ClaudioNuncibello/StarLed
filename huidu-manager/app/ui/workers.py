@@ -121,15 +121,15 @@ class PlaylistPushWorker(QThread):
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, manager, device_id, presentation_data, screen_w, screen_h, method="append", active_uuid=None):
+    def __init__(self, manager, device_id, cache_dict, screen_w, screen_h, action="avvia_carosello", target_uuid=None):
         super().__init__()
         self.manager = manager
         self.device_id = device_id
-        self.presentation_data = presentation_data  # Può essere un dict o una list[dict]
+        self.cache_dict = cache_dict
         self.screen_w = screen_w
         self.screen_h = screen_h
-        self.method = method  # "append" = accoda, "replace" = manda in onda esclusivo
-        self.active_uuid = active_uuid
+        self.action = action
+        self.target_uuid = target_uuid
 
     def run(self):
         try:
@@ -137,6 +137,8 @@ class PlaylistPushWorker(QThread):
             from app.core.presentation_model import (
                 Presentation, Area, TextItem, ImageItem, VideoItem, DigitalClockItem, Effect, Font
             )
+            from app.core.payload_generator import generate_payload
+            from datetime import datetime
             
             def build_presentation(pres_data: dict, is_active: bool) -> Presentation | None:
                 items_data = pres_data.get("items", [])
@@ -146,7 +148,12 @@ class PlaylistPushWorker(QThread):
                 for i, item in enumerate(items_data):
                     itype = item.get("type", "").lower()
                     effect_cfg = item.get("effect", {})
-                    effect = Effect(type=effect_cfg.get("type", 0), speed=effect_cfg.get("speed", 5), hold=effect_cfg.get("hold", 5000))
+                    # Requisito Tecnico Tassativo per image e text
+                    if itype in ("image", "text"):
+                        hold_val = effect_cfg.get("hold", 10000)
+                    else:
+                        hold_val = effect_cfg.get("hold", 5000)
+                    effect = Effect(type=effect_cfg.get("type", 0), speed=effect_cfg.get("speed", 5), hold=hold_val)
                     
                     if itype in ("image", "video"):
                         file_path = item.get("file")
@@ -200,42 +207,38 @@ class PlaylistPushWorker(QThread):
                     areas.append(Area(0, 0, self.screen_w, self.screen_h, item=[item]))
 
                 pres = Presentation(name=pres_name, area=areas, uuid=pres_data.get("uuid"))
-                if not is_active:
-                    pres.play_control = {"date": [{"start": "2000-01-01", "end": "2000-01-02"}]}
+                status = pres_data.get("status", "carousel")
+                if status == "scheduled":
+                    pres.play_control = pres_data.get("playControl")
+                else:
+                    pres.play_control = None
                 return pres
 
-            if self.method == "replace":
-                self.progress.emit("Elaborazione del nuovo palinsesto...")
-                if isinstance(self.presentation_data, list):
-                    all_pres_data = self.presentation_data
-                else:
-                    all_pres_data = [self.presentation_data]
-                    
-                built_presentations = []
-                for p_data in all_pres_data:
-                    # Includi solo se ha elementi e un UUID valido
-                    if not p_data.get("items"):
-                        continue
-                    
-                    is_active = (p_data.get("uuid") == self.active_uuid)
-                    pres = build_presentation(p_data, is_active)
-                    if pres:
-                        built_presentations.append(pres)
+            # Sincronizzazione Orologio (Pre-flight)
+            self.progress.emit("Sincronizzazione orologio dispositivo...")
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                self.manager.device_api.set_device_property(self.device_id, time=time_str)
+            except Exception as e:
+                self.progress.emit(f"Errore sync orologio (ignorabile): {e}")
+
+            self.progress.emit("Generazione del nuovo palinsesto...")
+            payload_data = generate_payload(self.cache_dict, self.action, self.target_uuid)
                 
-                if not built_presentations:
-                    self.error.emit("Nessuna presentazione valida da inviare.")
-                    return
-                
-                self.progress.emit(f"Invio di {len(built_presentations)} programmi al dispositivo...")
-                self.manager.programs_api.send_presentations(self.device_id, built_presentations, method="replace")
-                
-            else:
-                self.progress.emit("Invio programma al dispositivo...")
-                pres = build_presentation(self.presentation_data, is_active=True)
-                if not pres:
-                    self.error.emit("Nessun livello valido per l'invio.")
-                    return
-                self.manager.programs_api.send_presentation(self.device_id, pres, method="append")
+            built_presentations = []
+            for p_data in payload_data:
+                if not p_data.get("items"):
+                    continue
+                pres = build_presentation(p_data, False)
+                if pres:
+                    built_presentations.append(pres)
+            
+            if not built_presentations and self.action != "svuota_schermo":
+                self.error.emit("Nessuna presentazione valida da inviare (e l'azione non è svuota schermo).")
+                return
+            
+            self.progress.emit(f"Invio di {len(built_presentations)} programmi al dispositivo (REPLACE)...")
+            self.manager.programs_api.send_presentations(self.device_id, built_presentations, method="replace")
                 
             self.finished.emit()
             
@@ -335,4 +338,57 @@ class DiscoveryWorker(QThread):
             self.finished.emit(gateways)
         except Exception as e:
             self.error.emit(f"Errore discovery: {e}")
+
+
+class ScheduleFetchWorker(QThread):
+    finished = pyqtSignal(dict) # Restituisce task per il device
+    error = pyqtSignal(str)
+
+    def __init__(self, manager, device_id):
+        super().__init__()
+        self.manager = manager
+        self.device_id = device_id
+
+    def run(self):
+        try:
+            tasks = self.manager.device_api.get_scheduled_task(self.device_id)
+            self.finished.emit(tasks)
+        except Exception as e:
+            msg = getattr(e, "message", str(e))
+            self.error.emit(f"Errore lettura task schermo: {msg}")
+
+
+class ScheduleSyncWorker(QThread):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, manager, device_id, screen_tasks, program_updates):
+        super().__init__()
+        self.manager = manager
+        self.device_id = device_id
+        self.screen_tasks = screen_tasks
+        self.program_updates = program_updates
+
+    def run(self):
+        try:
+            from datetime import datetime
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                self.manager.device_api.set_device_property(self.device_id, time=time_str)
+            except Exception as e:
+                print(f"Errore sync orologio: {e}")
+
+            # 1. Aggiorna accensione/spegnimento schermo
+            if self.screen_tasks is not None:
+                self.manager.device_api.set_scheduled_task(self.device_id, {"screen": self.screen_tasks})
+            
+            # 2. Aggiorna palinsesto programmi (se ci sono update validi)
+            if self.program_updates:
+                self.manager.programs_api.update_programs_partial(self.device_id, self.program_updates)
+                
+            self.finished.emit()
+        except Exception as e:
+            msg = getattr(e, "message", str(e))
+            self.error.emit(f"Errore sincronizzazione palinsesto: {msg}")
+
 

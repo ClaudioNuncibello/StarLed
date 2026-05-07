@@ -14,7 +14,9 @@
                         "hold": 5000
                     }
                 }
-            ]
+            ],
+            "status": "disabled",
+            "playControl": null
         },
         "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93": {
             "uuid": "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93",
@@ -30,7 +32,9 @@
                         "hold": 5000
                     }
                 }
-            ]
+            ],
+            "status": "disabled",
+            "playControl": null
         },
         "74091b17-2667-46fe-8011-0b3c5313c027": {
             "uuid": "74091b17-2667-46fe-8011-0b3c5313c027",
@@ -46,7 +50,27 @@
                         "hold": 5000
                     }
                 }
-            ]
+            ],
+            "status": "disabled",
+            "playControl": null
+        },
+        "0f54c5b5-2cbd-40eb-a272-9c58fd8f788f": {
+            "uuid": "0f54c5b5-2cbd-40eb-a272-9c58fd8f788f",
+            "name": "prova",
+            "items": [
+                {
+                    "type": "image",
+                    "file": "C:/Users/User/Pictures/Screenshots/Screenshot 2026-05-07 151935.png",
+                    "fit": "stretch",
+                    "effect": {
+                        "type": 0,
+                        "speed": 4,
+                        "hold": 5000
+                    }
+                }
+            ],
+            "playControl": null,
+            "status": "disabled"
         }
     }
 }

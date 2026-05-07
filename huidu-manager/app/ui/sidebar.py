@@ -52,7 +52,8 @@ class Sidebar(QWidget):
     presentation_edit_requested = pyqtSignal(str)
     presentation_duplicate_requested = pyqtSignal(str)
     presentation_delete_requested = pyqtSignal(str)
-    presentation_activate_requested = pyqtSignal(str)  # "Manda in onda" — replace sul device
+    presentation_activate_requested = pyqtSignal(str)  # "Manda in onda"
+    presentation_disable_requested = pyqtSignal(str)   # "Disabilita"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,9 +80,9 @@ class Sidebar(QWidget):
         self.btn_refresh_screens.setFixedSize(24, 24)
         self.btn_refresh_screens.clicked.connect(self.screens_refresh_requested.emit)
         
-        screens_header_layout.addWidget(self.screens_header)
+        screens_header_layout.addWidget(self.screens_header, alignment=Qt.AlignmentFlag.AlignVCenter)
         screens_header_layout.addStretch()
-        screens_header_layout.addWidget(self.btn_refresh_screens)
+        screens_header_layout.addWidget(self.btn_refresh_screens, alignment=Qt.AlignmentFlag.AlignVCenter)
         
         w_screens_header = QWidget()
         w_screens_header.setLayout(screens_header_layout)
@@ -89,9 +90,9 @@ class Sidebar(QWidget):
         layout.addWidget(w_screens_header, 0)
         
         self.screens_list = QListWidget()
-        self.screens_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.screens_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.screens_list.itemClicked.connect(self.on_screen_clicked)
-        layout.addWidget(self.screens_list, 0)
+        layout.addWidget(self.screens_list, 1)
         
         # --- Sezione Presentazioni ---
         self.pres_section = QWidget()
@@ -118,10 +119,10 @@ class Sidebar(QWidget):
         self.btn_refresh_pres.setFixedSize(24, 24)
         self.btn_refresh_pres.clicked.connect(self.presentations_refresh_requested.emit)
         
-        pres_header_layout.addWidget(self.pres_header)
+        pres_header_layout.addWidget(self.pres_header, alignment=Qt.AlignmentFlag.AlignVCenter)
         pres_header_layout.addStretch()
-        pres_header_layout.addWidget(self.btn_add_pres)
-        pres_header_layout.addWidget(self.btn_refresh_pres)
+        pres_header_layout.addWidget(self.btn_add_pres, alignment=Qt.AlignmentFlag.AlignVCenter)
+        pres_header_layout.addWidget(self.btn_refresh_pres, alignment=Qt.AlignmentFlag.AlignVCenter)
         
         w_pres_header = QWidget()
         w_pres_header.setLayout(pres_header_layout)
@@ -129,13 +130,13 @@ class Sidebar(QWidget):
         pres_section_layout.addWidget(w_pres_header, 0)
         
         self.pres_list = QListWidget()
-        self.pres_list.setFixedHeight(120)
+        self.pres_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.pres_list.itemClicked.connect(self.on_screen_presentation_clicked)
         self.pres_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.pres_list.customContextMenuRequested.connect(self.show_pres_context_menu)
-        pres_section_layout.addWidget(self.pres_list, 0)
+        pres_section_layout.addWidget(self.pres_list, 1)
 
-        layout.addWidget(self.pres_section, 0)
+        layout.addWidget(self.pres_section, 2)
         self.pres_section.setVisible(False)
         
         # --- Sezione Livelli ---
@@ -149,9 +150,9 @@ class Sidebar(QWidget):
         self.layer_hint = QLabel("(drag per riord.)")
         self.layer_hint.setStyleSheet("color: #555555; font-size: 9pt;")
         
-        layer_header_layout.addWidget(self.layer_header)
+        layer_header_layout.addWidget(self.layer_header, alignment=Qt.AlignmentFlag.AlignVCenter)
         layer_header_layout.addStretch()
-        layer_header_layout.addWidget(self.layer_hint)
+        layer_header_layout.addWidget(self.layer_hint, alignment=Qt.AlignmentFlag.AlignVCenter)
         
         w_layer_header = QWidget()
         w_layer_header.setLayout(layer_header_layout)
@@ -164,19 +165,18 @@ class Sidebar(QWidget):
         layer_section_layout.addWidget(w_layer_header, 0)
         
         self.layer_list = LayerListWidget()
-        # Settiamo un'altezza approssimativa anche per il Layer se impostato a stretch=0
-        self.layer_list.setFixedHeight(180)
+        self.layer_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.layer_list.layers_reordered.connect(self.layers_reordered.emit)
         self.layer_list.itemClicked.connect(self.on_layer_clicked)
         self.layer_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layer_list.customContextMenuRequested.connect(self.show_layer_context_menu)
         
-        layer_section_layout.addWidget(self.layer_list, 0)
+        layer_section_layout.addWidget(self.layer_list, 1)
         
-        layout.addWidget(self.layer_section, 0)
+        layout.addWidget(self.layer_section, 3)
         self.layer_section.setVisible(False) # Visibile solo se presentazione attiva
         
-        layout.addStretch(1)
+        # Rimosso addStretch(1) finale per far dividere lo spazio ai 3 widget in modo equo.
         
     def set_screens(self, screens):
         self.screens_list.clear()
@@ -255,14 +255,17 @@ class Sidebar(QWidget):
         uuid = item.data(Qt.ItemDataRole.UserRole)
         
         menu = QMenu()
-        activate_act = menu.addAction("▶ Manda in onda")
-        activate_act.setToolTip("Invia questa presentazione al dispositivo come unica attiva")
+        activate_act = menu.addAction("▶ Manda Live")
+        activate_act.setToolTip("Invia questa presentazione e le altre live al dispositivo")
+        disable_act = menu.addAction("⏸ Disabilita")
+        disable_act.setToolTip("Disabilita la playlist rimuovendola dallo schermo")
         menu.addSeparator()
         mod_act = menu.addAction("Rinomina")
         dup_act = menu.addAction("Duplica")
         del_act = menu.addAction("Elimina")
         
         activate_act.triggered.connect(lambda: self.presentation_activate_requested.emit(uuid))
+        disable_act.triggered.connect(lambda: self.presentation_disable_requested.emit(uuid))
         mod_act.triggered.connect(lambda: self.presentation_edit_requested.emit(uuid))
         dup_act.triggered.connect(lambda: self.presentation_duplicate_requested.emit(uuid))
         del_act.triggered.connect(lambda: self.presentation_delete_requested.emit(uuid))
