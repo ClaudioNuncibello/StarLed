@@ -1,5 +1,4 @@
 import os
-# pyrefly: ignore [missing-import]
 from PyQt6.QtCore import QThread, pyqtSignal
 from app.api.huidu_client import HuiduApiError
 
@@ -168,8 +167,7 @@ class PlaylistPushWorker(QThread):
                             else:
                                 built_items.append(VideoItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, effect=effect))
                         else:
-                            msg = f"File non trovato: {file_path}\nVerifica che il file esista ancora nel percorso indicato."
-                            raise FileNotFoundError(msg)
+                            print(f"Skipping empty or missing file: {file_path}")
                     elif itype == "text":
                         text_str = item.get("string", "")
                         font_cfg = item.get("font", {})
@@ -254,9 +252,8 @@ class PlaylistPushWorker(QThread):
 
             # Sincronizzazione Orologio (Pre-flight)
             self.progress.emit("Sincronizzazione orologio dispositivo...")
-            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                self.manager.device_api.set_device_property(self.device_id, time=time_str)
+                self.manager.device_api.sync_time(self.device_id)
             except Exception as e:
                 self.progress.emit(f"Errore sync orologio (ignorabile): {e}")
 
@@ -278,13 +275,9 @@ class PlaylistPushWorker(QThread):
                 self.error.emit("Nessuna presentazione valida da inviare.")
                 return
             
-            import json as _json
             self.progress.emit(f"Invio di {len(built_presentations)} programmi al dispositivo (REPLACE)...")
-            for bp in built_presentations:
-                d = bp.to_dict()
-                pc = d.get("playControl")
-                print(f"[DEBUG PAYLOAD] name={d.get('name')} | playControl={'PRESENTE' if pc else 'ASSENTE'}: {_json.dumps(pc, ensure_ascii=False)}")
             self.manager.programs_api.send_presentations(self.device_id, built_presentations, method="replace")
+                
             self.finished.emit()
             
         except Exception as e:

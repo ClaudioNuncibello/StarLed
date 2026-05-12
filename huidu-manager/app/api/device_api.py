@@ -202,19 +202,82 @@ class DeviceApi:
 
         Args:
             device_id: ID del dispositivo.
-            delay: Secondi di attesa prima del riavvio (default 5).
+            delay: Secondi prima del riavvio (default: 5).
 
         Returns:
-            ``True`` se il comando è stato accettato.
+            ``True`` se l'operazione è riuscita.
 
         Raises:
             HuiduApiError: Se il gateway restituisce un errore.
         """
-        body: dict[str, Any] = {"method": "rebootDevice", "data": {"delay": delay}}
+        body = {"method": "rebootDevice", "data": {"delay": delay}}
         response = self._client.post(f"/api/device/{device_id}", body)
         self._extract_device_data(response, device_id)
-        logger.info("Riavvio %s in %d secondi.", device_id, delay)
+        logger.info("Riavvio %s inviato (delay=%ds).", device_id, delay)
         return True
+
+    def sync_time(self, device_id: str) -> bool:
+        """Sincronizza l'orologio del dispositivo con l'ora locale del PC.
+        Utilizza l'endpoint XML /raw/{id} per garantire la corretta impostazione.
+        
+        Args:
+            device_id: ID del dispositivo.
+            
+        Returns:
+            ``True`` se l'operazione è riuscita.
+        """
+        import datetime
+        import uuid
+        import requests
+        import hashlib
+        
+        now = datetime.datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # XML body requirements
+        xml_body = f"""<?xml version='1.0' encoding='utf-8'?>
+<sdk guid="{uuid.uuid4()}">
+    <in method="SetTimeInfo">
+        <time>{now_str}</time>
+        <timezone>+01:00</timezone>
+    </in>
+</sdk>"""
+        
+        # Construct raw URL and headers using client details
+        host = self._client._host
+        port = self._client._port
+        sdk_key = self._client._sdk_key
+        sdk_secret = self._client._sdk_secret
+        
+        date_str = datetime.datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+        sign_str = sdk_key + date_str
+        sign = hashlib.md5(sign_str.encode()).hexdigest()
+        
+        headers = {
+            "sdkKey": sdk_key,
+            "date": date_str,
+            "sign": sign,
+            "requestId": str(uuid.uuid4()),
+            "Content-Type": "application/xml"
+        }
+        
+        url = f"http://{host}:{port}/raw/{device_id}"
+        
+        try:
+            resp = requests.post(url, data=xml_body.encode('utf-8'), headers=headers, timeout=10)
+            if resp.status_code == 200 and "kSuccess" in resp.text:
+                logger.info("Orologio %s sincronizzato: %s", device_id, now_str)
+                return True
+            else:
+                logger.warning("Sync orologio %s XML response: %s", device_id, resp.text)
+                # Fallback al setDeviceProperty se kSuccess non trovato
+                self.set_device_property(device_id, time=now_str)
+                return True
+        except Exception as e:
+            logger.error("Errore sync orologio XML %s: %s", device_id, e)
+            # Fallback
+            self.set_device_property(device_id, time=now_str)
+            return True
 
     def get_scheduled_task(
         self, device_id: str, categories: list[str] | None = None

@@ -25,6 +25,8 @@ class DeviceWorker(QThread):
                 self.manager.device_api.open_screen(self.device_id)
             elif self.action == "close":
                 self.manager.device_api.close_screen(self.device_id)
+            elif self.action == "sync_time":
+                self.manager.device_api.sync_time(self.device_id)
             self.finished.emit()
         except Exception as e:
             err_msg = getattr(e, 'message', str(e))
@@ -102,6 +104,10 @@ class ScreenSettingsDialog(QDialog):
         self.btn_spegni.clicked.connect(self.on_spegni)
         layout.addWidget(self.btn_spegni)
         
+        self.btn_sync_time = QPushButton("⏱ Sincronizza Orologio (PC → Display)")
+        self.btn_sync_time.clicked.connect(self.on_sync_time)
+        layout.addWidget(self.btn_sync_time)
+        
         self.btn_riavvia = QPushButton("↺ Riavvia dispositivo")
         self.btn_riavvia.setObjectName("DangerButton")
         self.btn_riavvia.clicked.connect(self.on_riavvia)
@@ -141,6 +147,10 @@ class ScreenSettingsDialog(QDialog):
 
     def on_spegni(self):
         self._run_async("close")
+
+    def on_sync_time(self):
+        self._run_async("sync_time")
+        QMessageBox.information(self, "Sincronizzazione", "Comando di sincronizzazione orologio inviato.")
 
     def on_riavvia(self):
         reply = QMessageBox.question(
