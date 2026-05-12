@@ -26,7 +26,9 @@ class DeviceWorker(QThread):
             elif self.action == "close":
                 self.manager.device_api.close_screen(self.device_id)
             elif self.action == "sync_time":
-                self.manager.device_api.sync_time(self.device_id)
+                success = self.manager.device_api.sync_time(self.device_id)
+                if not success:
+                    raise Exception("Sincronizzazione orologio fallita (API non supportata o errore di rete).")
             self.finished.emit()
         except Exception as e:
             err_msg = getattr(e, 'message', str(e))
@@ -41,7 +43,7 @@ class ScreenSettingsDialog(QDialog):
         self.manager = screen_manager
         
         self.setWindowTitle("Impostazioni Schermo")
-        self.setFixedSize(380, 480)
+        self.setFixedSize(380, 580)
         
         self._workers = set()
         self.debounce_timer = QTimer()
@@ -113,6 +115,30 @@ class ScreenSettingsDialog(QDialog):
         self.btn_riavvia.clicked.connect(self.on_riavvia)
         layout.addWidget(self.btn_riavvia)
         
+        # Orologio digitale in tempo reale
+        self.clock_label = QLabel()
+        self.clock_label.setStyleSheet("color: #00ff00; background-color: #111; padding: 6px; font-family: monospace; font-size: 15pt; font-weight: bold; text-align: center; border-radius: 4px; border: 1px solid #333;")
+        self.clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Estrai l'ora dal device
+        device_time_str = self.props.get('time')
+        self.device_datetime = None
+        if device_time_str:
+            from datetime import datetime
+            try:
+                self.device_datetime = datetime.strptime(device_time_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+                
+        self.update_clock_label()
+        
+        self.tick_timer = QTimer(self)
+        self.tick_timer.setInterval(1000)
+        self.tick_timer.timeout.connect(self.tick_clock)
+        self.tick_timer.start()
+        
+        layout.addWidget(self.clock_label)
+        
         layout.addSpacing(16)
         
         # Network and Hardware Info Grid
@@ -150,7 +176,25 @@ class ScreenSettingsDialog(QDialog):
 
     def on_sync_time(self):
         self._run_async("sync_time")
+        
+        # Aggiorna visivamente il clock al tempo del PC locale
+        from datetime import datetime
+        self.device_datetime = datetime.now()
+        self.update_clock_label()
+        
         QMessageBox.information(self, "Sincronizzazione", "Comando di sincronizzazione orologio inviato.")
+
+    def update_clock_label(self):
+        if self.device_datetime:
+            self.clock_label.setText(self.device_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+        else:
+            self.clock_label.setText("Orologio N/D")
+
+    def tick_clock(self):
+        if self.device_datetime:
+            from datetime import timedelta
+            self.device_datetime += timedelta(seconds=1)
+            self.update_clock_label()
 
     def on_riavvia(self):
         reply = QMessageBox.question(

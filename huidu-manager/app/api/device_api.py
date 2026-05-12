@@ -228,56 +228,33 @@ class DeviceApi:
         """
         import datetime
         import uuid
-        import requests
-        import hashlib
+        # A causa di un bug nel Gateway Huidu SDK per questa versione firmware,
+        # l'invio del parametro "time" o del comando XML SetTimeInfo corrompe l'RTC
+        # facendolo sballare (es. al 2023). La soluzione sicura è configurare
+        # la sincronizzazione NTP automatica con il fuso orario corretto.
         
-        now = datetime.datetime.now()
-        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        # Calcolo timeZone Huidu
+        # Esempio: "Europe/Rome;UTC+02:00;Rome"
+        import time
+        offset = time.localtime().tm_gmtoff
+        sign_tz = "+" if offset >= 0 else "-"
+        hours, remainder = divmod(abs(int(offset)), 3600)
+        minutes, _ = divmod(remainder, 60)
         
-        # XML body requirements
-        xml_body = f"""<?xml version='1.0' encoding='utf-8'?>
-<sdk guid="{uuid.uuid4()}">
-    <in method="SetTimeInfo">
-        <time>{now_str}</time>
-        <timezone>+01:00</timezone>
-    </in>
-</sdk>"""
-        
-        # Construct raw URL and headers using client details
-        host = self._client._host
-        port = self._client._port
-        sdk_key = self._client._sdk_key
-        sdk_secret = self._client._sdk_secret
-        
-        date_str = datetime.datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
-        sign_str = sdk_key + date_str
-        sign = hashlib.md5(sign_str.encode()).hexdigest()
-        
-        headers = {
-            "sdkKey": sdk_key,
-            "date": date_str,
-            "sign": sign,
-            "requestId": str(uuid.uuid4()),
-            "Content-Type": "application/xml"
-        }
-        
-        url = f"http://{host}:{port}/raw/{device_id}"
+        tz_offset_str = f"UTC{sign_tz}{hours:02d}:{minutes:02d}"
+        # Usiamo un nome generico, il controller applicherà l'offset
+        huidu_tz = f"LocalTime;{tz_offset_str};Local"
         
         try:
-            resp = requests.post(url, data=xml_body.encode('utf-8'), headers=headers, timeout=10)
-            if resp.status_code == 200 and "kSuccess" in resp.text:
-                logger.info("Orologio %s sincronizzato: %s", device_id, now_str)
-                return True
-            else:
-                logger.warning("Sync orologio %s XML response: %s", device_id, resp.text)
-                # Fallback al setDeviceProperty se kSuccess non trovato
-                self.set_device_property(device_id, time=now_str)
-                return True
-        except Exception as e:
-            logger.error("Errore sync orologio XML %s: %s", device_id, e)
-            # Fallback
-            self.set_device_property(device_id, time=now_str)
+            self.set_device_property(device_id, **{
+                "time.sync": "ntp",
+                "time.timeZone": huidu_tz
+            })
+            logger.info("Orologio %s configurato per NTP: %s", device_id, huidu_tz)
             return True
+        except Exception as e:
+            logger.error("Errore configurazione NTP %s: %s", device_id, e)
+            return False
 
     def get_scheduled_task(
         self, device_id: str, categories: list[str] | None = None

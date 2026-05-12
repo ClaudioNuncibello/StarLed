@@ -250,12 +250,6 @@ class PlaylistPushWorker(QThread):
                     pres.play_control = None
                 return pres
 
-            # Sincronizzazione Orologio (Pre-flight)
-            self.progress.emit("Sincronizzazione orologio dispositivo...")
-            try:
-                self.manager.device_api.sync_time(self.device_id)
-            except Exception as e:
-                self.progress.emit(f"Errore sync orologio (ignorabile): {e}")
 
             self.progress.emit("Generazione del nuovo palinsesto...")
             payload_data = generate_payload(self.cache_dict, self.action, self.target_uuid)
