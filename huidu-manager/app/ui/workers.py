@@ -1,4 +1,5 @@
 import os
+# pyrefly: ignore [missing-import]
 from PyQt6.QtCore import QThread, pyqtSignal
 from app.api.huidu_client import HuiduApiError
 
@@ -167,7 +168,8 @@ class PlaylistPushWorker(QThread):
                             else:
                                 built_items.append(VideoItem(file=up_res.url, fileMd5=up_res.md5, fileSize=up_res.size, effect=effect))
                         else:
-                            print(f"Skipping empty or missing file: {file_path}")
+                            msg = f"File non trovato: {file_path}\nVerifica che il file esista ancora nel percorso indicato."
+                            raise FileNotFoundError(msg)
                     elif itype == "text":
                         text_str = item.get("string", "")
                         font_cfg = item.get("font", {})
@@ -196,7 +198,42 @@ class PlaylistPushWorker(QThread):
                             PlayText=play_text
                         ))
                     elif itype in ("digitalclock", "clock", "dialclock"):
-                        built_items.append(DigitalClockItem())
+                        # Legge la configurazione salvata in cache (non usa più solo i defaults)
+                        tz = item.get("timezone", "+1:00")
+                        # Supporta sia "multi_line" (chiave dialog) che "multiLine"
+                        multi = item.get("multiLine", item.get("multi_line", True))
+
+                        def _to_display(val) -> str:
+                            """Converte bool/str in 'true'/'false' per Huidu."""
+                            if isinstance(val, bool):
+                                return "true" if val else "false"
+                            return str(val).lower()
+
+                        def _build_clock_sub(raw: dict, default_color: str) -> dict:
+                            """Costruisce sub-oggetto date/time/week compatibile Huidu.
+                            Il dialog salva 'visible', Huidu vuole 'display' (stringa).
+                            """
+                            visible = raw.get("visible", raw.get("display", True))
+                            return {
+                                "format": int(raw.get("format", 0)),
+                                "color": raw.get("color", default_color),
+                                "display": _to_display(visible),
+                            }
+
+                        date_cfg = _build_clock_sub(item.get("date", {}), "#ffffff")
+                        time_cfg = _build_clock_sub(item.get("time", {}), "#00ff00")
+                        week_cfg = _build_clock_sub(item.get("week", {}), "#ffff00")
+                        # Di default week è nascosto se non esplicitamente configurato
+                        if not item.get("week"):
+                            week_cfg["display"] = "false"
+
+                        built_items.append(DigitalClockItem(
+                            timezone=tz,
+                            multiLine=multi,
+                            date=date_cfg,
+                            time=time_cfg,
+                            week=week_cfg,
+                        ))
 
                 if not built_items:
                     return None
@@ -207,8 +244,9 @@ class PlaylistPushWorker(QThread):
                     areas.append(Area(0, 0, self.screen_w, self.screen_h, item=[item]))
 
                 pres = Presentation(name=pres_name, area=areas, uuid=pres_data.get("uuid"))
-                status = pres_data.get("status", "carousel")
-                if status == "scheduled":
+                # Fix: lo status ora si chiama "programmed" (non più "scheduled")
+                status = pres_data.get("status", "live")
+                if status == "programmed":
                     pres.play_control = pres_data.get("playControl")
                 else:
                     pres.play_control = None
@@ -233,13 +271,20 @@ class PlaylistPushWorker(QThread):
                 if pres:
                     built_presentations.append(pres)
             
-            if not built_presentations and self.action != "svuota_schermo":
-                self.error.emit("Nessuna presentazione valida da inviare (e l'azione non è svuota schermo).")
+            # Se la lista è vuota e l'azione lo prevede, inviamo un replace vuoto → schermo nero.
+            # Blocchiamo solo le azioni che non hanno senso senza presentazioni.
+            actions_require_content = ("manda_live", "disabilita")
+            if not built_presentations and self.action in actions_require_content:
+                self.error.emit("Nessuna presentazione valida da inviare.")
                 return
             
+            import json as _json
             self.progress.emit(f"Invio di {len(built_presentations)} programmi al dispositivo (REPLACE)...")
+            for bp in built_presentations:
+                d = bp.to_dict()
+                pc = d.get("playControl")
+                print(f"[DEBUG PAYLOAD] name={d.get('name')} | playControl={'PRESENTE' if pc else 'ASSENTE'}: {_json.dumps(pc, ensure_ascii=False)}")
             self.manager.programs_api.send_presentations(self.device_id, built_presentations, method="replace")
-                
             self.finished.emit()
             
         except Exception as e:

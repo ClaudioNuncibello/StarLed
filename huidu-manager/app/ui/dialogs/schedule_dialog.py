@@ -21,6 +21,7 @@ class ScheduleDialog(QDialog):
         
         self.current_selected_uuid = None
         self.screen_task_data = None
+        self._loading = False  # Impedisce salvataggio automatico durante il caricamento UI
         
         self.setup_ui()
         self.load_screen_schedule()
@@ -57,13 +58,14 @@ class ScheduleDialog(QDialog):
         
         for uid, p in self.programs.items():
             name = p.get("name", "Senza Nome")
+            status = p.get("status", "live")
             play_ctrl = p.get("playControl")
-            if play_ctrl is None:
-                display_name = f"▶ {name}"
-            elif play_ctrl.get("date") and len(play_ctrl.get("date", [])) > 0 and play_ctrl["date"][0].get("start") == "2000-01-01":
+            if status == "disabled":
                 display_name = f"🚫 {name}"
-            else:
+            elif play_ctrl is not None:
                 display_name = f"📅 {name}"
+            else:
+                display_name = f"▶ {name}"
             
             item = QListWidgetItem(display_name)
             item.setData(Qt.ItemDataRole.UserRole, uid)
@@ -168,34 +170,40 @@ class ScheduleDialog(QDialog):
 
     def on_program_selected(self, row):
         if row < 0: return
-        
-        # Prima di cambiare, salviamo i dati correnti se c'è un programma selezionato
+
+        # 1. Salva la configurazione del programma PRECEDENTE (se c'era)
         self._save_current_editor_to_memory()
-        
+
+        # 2. Blocca il salvataggio automatico mentre carichiamo il nuovo programma nell'editor
+        self._loading = True
+
         item = self.lst_programs.item(row)
         uid = item.data(Qt.ItemDataRole.UserRole)
         self.current_selected_uuid = uid
-        
+
         p = self.programs[uid]
         play_ctrl = p.get("playControl")
-        
+        status = p.get("status", "live")
+
         self.editor_panel.setEnabled(True)
-        
-        if play_ctrl is None:
-            self.cmb_mode.setCurrentIndex(0) # Riproduci sempre
+
+        if status == "disabled":
+            # Disattivata esplicitamente
+            self.cmb_mode.setCurrentIndex(2)
             self._set_editor_defaults()
-        elif play_ctrl.get("date") and len(play_ctrl.get("date", [])) > 0 and play_ctrl["date"][0].get("start") == "2000-01-01":
-            self.cmb_mode.setCurrentIndex(2) # Disattivata
+        elif play_ctrl is None:
+            # Live: nessuna finestra oraria → Riproduci Sempre
+            self.cmb_mode.setCurrentIndex(0)
             self._set_editor_defaults()
         else:
-            self.cmb_mode.setCurrentIndex(1) # Personalizzato
-            # Days
+            # Personalizzato (programmed con playControl valido)
+            self.cmb_mode.setCurrentIndex(1)
+            # Giorni
             week = play_ctrl.get("week", {}).get("enable", "")
             enabled_days = week.split(",") if week else []
             for day_code, chk in self.chk_days.items():
                 chk.setChecked(day_code in enabled_days)
-            
-            # Times (es. [{"start": "08:00:00", "end": "12:00:00"}])
+            # Fasce orarie
             times = play_ctrl.get("time", [])
             time_strs = []
             for t in times:
@@ -204,34 +212,46 @@ class ScheduleDialog(QDialog):
                 if s and e:
                     time_strs.append(f"{s}-{e}")
             self.txt_times.setText(", ".join(time_strs))
-            
+
+        # Fine caricamento: ora i segnali di modifica possono scattare normalmente
+        self._loading = False
+
     def _set_editor_defaults(self):
         for chk in self.chk_days.values():
             chk.setChecked(True)
         self.txt_times.setText("")
-        
+
     def on_mode_changed(self, index):
         is_custom = (index == 1)
         self.days_group.setEnabled(is_custom)
         self.time_group.setEnabled(is_custom)
-        
+
     def _save_current_editor_to_memory(self):
+        """Salva la configurazione dell'editor nella copia locale dei programmi.
+
+        Viene chiamata quando si cambia selezione o alla conferma del dialog.
+        Garantita di non scattare durante il caricamento iniziale grazie al flag _loading.
+        """
         if not self.current_selected_uuid: return
-        
+        if getattr(self, "_loading", False): return
+
         p = self.programs[self.current_selected_uuid]
-        
+
         idx = self.cmb_mode.currentIndex()
         if idx == 0:
+            # "Riproduci Sempre" → live, nessun playControl
             p["playControl"] = None
+            p["status"] = "live"
         elif idx == 2:
-            p["playControl"] = {"date": [{"start": "2000-01-01", "end": "2000-01-02"}]}
+            # "Disattivata" → disabled, nessun playControl (no date-trappola!)
+            p["playControl"] = None
+            p["status"] = "disabled"
         else:
-            # Raccogli giorni
+            # "Personalizzato" → programmed con playControl valido
             active_days = [day_code for day_code, chk in self.chk_days.items() if chk.isChecked()]
             if not active_days:
-                active_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] # Default se vuoto
-            
-            # Raccogli ore
+                active_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
             time_str = self.txt_times.text().strip()
             time_list = []
             if time_str:
@@ -240,40 +260,37 @@ class ScheduleDialog(QDialog):
                     parts = r.split("-")
                     if len(parts) == 2:
                         s, e = parts[0].strip(), parts[1].strip()
-                        # Pad con :00 se mancano i secondi
                         if len(s) == 5: s += ":00"
                         if len(e) == 5: e += ":00"
                         time_list.append({"start": s, "end": e})
-            
-            # Se time_list è vuoto, facciamo tutto il giorno
             if not time_list:
                 time_list = [{"start": "00:00:00", "end": "23:59:59"}]
-                
+
             p["playControl"] = {
                 "week": {"enable": ",".join(active_days)},
                 "date": [{"start": "2020-01-01", "end": "2099-12-31"}],
-                "time": time_list
+                "time": time_list,
             }
-            
-        # Aggiorna indicatore lista
+            p["status"] = "programmed"
+
+        # Aggiorna l'icona nella lista
         for i in range(self.lst_programs.count()):
-            item = self.lst_programs.item(i)
-            if item.data(Qt.ItemDataRole.UserRole) == self.current_selected_uuid:
+            lst_item = self.lst_programs.item(i)
+            if lst_item.data(Qt.ItemDataRole.UserRole) == self.current_selected_uuid:
                 name = p.get("name", "")
-                play_ctrl = p.get("playControl")
-                if play_ctrl is None:
-                    display_name = f"▶ {name}"
-                elif play_ctrl.get("date") and len(play_ctrl.get("date", [])) > 0 and play_ctrl["date"][0].get("start") == "2000-01-01":
+                status = p.get("status", "live")
+                if status == "disabled":
                     display_name = f"🚫 {name}"
-                else:
+                elif p.get("playControl") is not None:
                     display_name = f"📅 {name}"
-                
-                item.setText(display_name)
+                else:
+                    display_name = f"▶ {name}"
+                lst_item.setText(display_name)
                 break
 
     def on_save(self):
         self._save_current_editor_to_memory()
-        
+
         # 1. Costruisci i task dello schermo
         screen_tasks = []
         if self.chk_screen_off.isChecked():
@@ -289,7 +306,7 @@ class ScheduleDialog(QDialog):
             e = parts[1].strip()
             if len(s) == 5: s += ":00"
             if len(e) == 5: e += ":00"
-            
+
             screen_tasks.append({
                 "timeRange": f"{s}~{e}",
                 "dateRange": "2024-01-01~2099-12-31",
@@ -297,30 +314,26 @@ class ScheduleDialog(QDialog):
                 "data": "false"
             })
         else:
-            # Se è unchecked, resettiamo i task schermo inviando array vuoto
             screen_tasks = []
-            
+
         self.progress_dlg = QProgressDialog("Sincronizzazione orari schermo...", None, 0, 0, self)
         self.progress_dlg.setWindowTitle("Attendere")
         self.progress_dlg.setModal(True)
         self.progress_dlg.show()
-        
+
         self.sync_worker = ScheduleSyncWorker(
             self.manager, self.device_id, screen_tasks, None
         )
-        
+
         def on_done():
             self.progress_dlg.accept()
-            # Aggiorniamo la cache in main_window prima di chiudere
-            # In update_programs_partial stiamo aggiornando il device,
-            # quindi i dati del dispositivo si sono aggiornati.
             QMessageBox.information(self, "Fatto", "Palinsesto sincronizzato correttamente.")
             self.accept()
-            
+
         def on_error(err):
             self.progress_dlg.accept()
             QMessageBox.critical(self, "Errore", str(err))
-            
+
         self.sync_worker.finished.connect(on_done)
         self.sync_worker.error.connect(on_error)
         self.sync_worker.start()

@@ -51,57 +51,73 @@ def generate_payload(
     action: str,
     target_uuid: str = None
 ) -> List[Dict[str, Any]]:
-    """Genera il payload data per la chiamata API method=replace."""
+    """Genera il payload data per la chiamata API method=replace.
+
+    Semantica stati:
+    - ``live``       — playControl=None, viene inviato al device.
+                       Huidu lo riproduce sempre (nessuna finestra oraria).
+    - ``programmed`` — ha playControl con date valide, riprodotto nelle
+                       finestre orarie configurate.
+    - ``disabled``   — NON viene inviato al device (escluso dal replace).
+                       playControl viene sempre azzerato a None.
+    """
     payload_programs = []
-    
+
     if action == "manda_live":
+        # Porta il target in live e azzera il playControl residuo
         if target_uuid and target_uuid in cache_programs:
             cache_programs[target_uuid]["status"] = "live"
-            
-        # Per mantenere l'esclusività tra modalità, disabilitiamo i programmati
+            cache_programs[target_uuid]["playControl"] = None
+
+        # Le playlist programmate vengono disabilitate: una sola modalità attiva
         for uid, p in cache_programs.items():
+            if uid == target_uuid:
+                continue
             if p.get("status") == "programmed":
                 p["status"] = "disabled"
                 p["playControl"] = None
-                
-        # Ritorna tutte le live (che si alterneranno sul controller)
+
+        # Invia tutte le live (Huidu le riproduce in loop, senza playControl)
         payload_programs = [p for p in cache_programs.values() if p.get("status") == "live"]
-        
+
     elif action == "disabilita":
+        # Disabilita il target e pulisce il playControl residuo
         if target_uuid and target_uuid in cache_programs:
             cache_programs[target_uuid]["status"] = "disabled"
-            
-        # Ritorna le restanti live o programmate
-        # Se eravamo in live, restituisce le live. Se in palinsesto, restituisce le programmed.
+            cache_programs[target_uuid]["playControl"] = None
+
+        # Invia le rimanenti live o programmate
         payload_programs = [p for p in cache_programs.values() if p.get("status") in ("live", "programmed")]
 
     elif action == "svuota_schermo":
-        # Disabilita tutto
+        # Disabilita TUTTO e pulisce il playControl da tutti
         for p in cache_programs.values():
             p["status"] = "disabled"
             p["playControl"] = None
-        # Ritorna vuoto
+        # Replace vuoto → schermo nero
         payload_programs = []
-        
+
     elif action == "push_palinsesto":
-        # Tutto ciò che non ha un playControl valido (es. le live) viene disabilitato
+        # Chi ha playControl valido → programmed e viene inviato
+        # Chi non ha playControl (live) → disabled nel contesto palinsesto
         for uid, p in cache_programs.items():
-            if p.get("playControl") is None:
-                p["status"] = "disabled"
-            else:
+            if p.get("playControl") is not None:
                 p["status"] = "programmed"
-                
+            else:
+                p["status"] = "disabled"
+
         payload_programs = [p for p in cache_programs.values() if p.get("status") == "programmed"]
-        
+
     elif action == "sincronizza":
-        # Invia lo stato corrente: se c'è almeno una live manda quelle, altrimenti le programmed
-        has_live = any(p.get("status") == "live" for p in cache_programs.values())
-        if has_live:
-            payload_programs = [p for p in cache_programs.values() if p.get("status") == "live"]
+        # Invia lo stato corrente senza mutare gli stati
+        live_list = [p for p in cache_programs.values() if p.get("status") == "live"]
+        programmed_list = [p for p in cache_programs.values() if p.get("status") == "programmed"]
+        if live_list:
+            payload_programs = live_list
         else:
-            payload_programs = [p for p in cache_programs.values() if p.get("status") == "programmed"]
-        
+            payload_programs = programmed_list
+
     else:
         raise ValueError(f"Azione non supportata: {action}")
-        
+
     return payload_programs

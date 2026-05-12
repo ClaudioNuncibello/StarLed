@@ -163,49 +163,44 @@ class ClockDialog(QDialog):
         is_digital = self.combo_type.currentIndex() == 0
         clock_type = "digitalClock" if is_digital else "dialClock"
         tz_str = self.combo_tz.currentText().split(" ")[0]
-        
-        font_data = {
-            "name": self.font_combo.currentText(),
-            "size": self.font_spin.value(),
-            "color": self.btn_font_color.current_color.name(),
-            "bold": False,
-            "italic": False,
-            "underline": False
-        }
-        
+
         item_data = {
             "type": clock_type,
             "timezone": tz_str,
-            "font": font_data
         }
-        
+
         if is_digital:
-            item_data["multi_line"] = self.chk_multiline.isChecked()
+            # "multiLine" — camelCase come vuole Huidu / presentation_model.py
+            item_data["multiLine"] = self.chk_multiline.isChecked()
+            # "display" come stringa "true"/"false" (non "visible" bool)
             item_data["date"] = {
-                "visible": self.chk_date.isChecked(),
                 "format": int(self.cmb_date.currentText()[0]),
-                "color": self.col_date.current_color.name()
+                "color": self.col_date.current_color.name(),
+                "display": "true" if self.chk_date.isChecked() else "false",
             }
             item_data["time"] = {
-                "visible": self.chk_time.isChecked(),
                 "format": int(self.cmb_time.currentText()[0]),
-                "color": self.col_time.current_color.name()
+                "color": self.col_time.current_color.name(),
+                "display": "true" if self.chk_time.isChecked() else "false",
             }
             item_data["week"] = {
-                "visible": self.chk_week.isChecked(),
                 "format": int(self.cmb_week.currentText()[0]),
-                "color": self.col_week.current_color.name()
+                "color": self.col_week.current_color.name(),
+                "display": "true" if self.chk_week.isChecked() else "false",
             }
+            # Lunar: campo extra, non parte del modello Huidu ufficiale
             item_data["lunar"] = {
-                "visible": self.chk_lunar.isChecked(),
-                "color": self.col_lunar.current_color.name()
+                "display": "true" if self.chk_lunar.isChecked() else "false",
+                "color": self.col_lunar.current_color.name(),
             }
         else:
+            # dialClock — colori lancette
             item_data["hour_hand_color"] = getattr(self, "col_hour_hand").current_color.name()
             item_data["minute_hand_color"] = getattr(self, "col_minute_hand").current_color.name()
             item_data["second_hand_color"] = getattr(self, "col_second_hand").current_color.name()
             item_data["hour_scale_color"] = getattr(self, "col_hour_scale").current_color.name()
             item_data["minute_scale_color"] = getattr(self, "col_minute_scale").current_color.name()
-            
+
         self.item_created.emit(item_data)
         self.accept()
+

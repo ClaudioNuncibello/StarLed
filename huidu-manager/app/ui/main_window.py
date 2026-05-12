@@ -330,10 +330,13 @@ class MainWindow(QMainWindow):
         if not self.active_screen_id: return
         dlg = ScheduleDialog(self.active_screen_id, self.presentations_cache[self.active_screen_id], self.manager, self)
         if dlg.exec():
-            # Aggiorna la cache locale con gli orari scelti
+            # Aggiorna la cache locale con gli orari scelti dal dialog
             self.presentations_cache[self.active_screen_id] = dlg.programs
+            self._save_cache()
+            # Aggiorna la sidebar con i nuovi stati (programmed/live/disabled)
+            self.sidebar.set_presentations(list(self.presentations_cache[self.active_screen_id].values()))
             
-            # Applica la modalità "push_palinsesto" (azzera tutto il resto)
+            # Applica il palinsesto: invia al device tutte le playlist con il loro playControl
             sw, sh = self._get_screen_dimensions()
             from PyQt6.QtWidgets import QProgressDialog
             self._sch_dialog = QProgressDialog("Applicazione palinsesto...", "Annulla", 0, 100, self)
@@ -341,6 +344,7 @@ class MainWindow(QMainWindow):
             self._sch_dialog.setModal(True)
             self._sch_dialog.show()
             
+            # Usa una copia della cache aggiornata (già salvata sopra)
             self._sch_worker = PlaylistPushWorker(
                 self.manager, self.active_screen_id, self.presentations_cache[self.active_screen_id], sw, sh, action="push_palinsesto"
             )
@@ -348,7 +352,8 @@ class MainWindow(QMainWindow):
             def on_done():
                 self._sch_dialog.setValue(100)
                 self._save_cache()
-                QMessageBox.information(self, "Palinsesto", "Il palinsesto è stato inviato. Le altre playlist sono state disabilitate.")
+                self.sidebar.set_presentations(list(self.presentations_cache[self.active_screen_id].values()))
+                QMessageBox.information(self, "Palinsesto", "Il palinsesto è stato inviato al controller.")
             def on_err(msg):
                 self._sch_dialog.cancel()
                 QMessageBox.critical(self, "Errore", f"Impossibile inviare palinsesto:\n{msg}")
@@ -417,7 +422,8 @@ class MainWindow(QMainWindow):
         def on_programs(programs, s_id):
             # MERGE: i programmi del device vengono aggiunti/aggiornati nella cache locale
             # senza mai rimuovere le presentazioni create localmente.
-            # La cache locale è la fonte di verità per la sidebar.
+            # REGOLA: la cache locale è la fonte di verità per status e items.
+            # Il device viene usato solo per scoprire programmi NON ancora in cache.
             cache = self.presentations_cache.setdefault(s_id, {})
             device_uuids: set[str] = set()
             for p in programs:
@@ -425,28 +431,33 @@ class MainWindow(QMainWindow):
                 if not raw_uid: continue
                 uid = str(raw_uid).lower()
                 
-                # Ignora frammenti carosello generati dinamicamente per il dominio della scena
+                # Ignora frammenti carosello generati dinamicamente
                 if uid.startswith("auto-"): 
                     continue
                     
                 name = p.get("name")
-                play_ctrl = p.get("playControl")
-                existing = cache.get(uid, {"items": []})
+                play_ctrl_from_device = p.get("playControl")
+                existing = cache.get(uid)
                 
-                # Infer status
-                status = existing.get("status")
-                if play_ctrl is not None:
-                    status = "programmed"
-                elif status not in ("live", "disabled", "programmed"):
-                    status = "live"
-                        
-                cache[uid] = {
-                    "uuid": uid, 
-                    "name": name, 
-                    "items": existing.get("items", []),
-                    "playControl": play_ctrl,
-                    "status": status
-                }
+                if existing is not None:
+                    # Presentazione già in cache: PRESERVA lo status e il playControl locali.
+                    # Aggiorna solo il nome (potrebbe essere stato rinominato sul device).
+                    existing["name"] = name
+                    # Non toccare status, playControl, items: sono la fonte di verità locale.
+                else:
+                    # Presentazione nuova (non ancora in cache): inseriscila con lo stato
+                    # inferito dal device.
+                    if play_ctrl_from_device is not None:
+                        inferred_status = "programmed"
+                    else:
+                        inferred_status = "live"
+                    cache[uid] = {
+                        "uuid": uid,
+                        "name": name,
+                        "items": [],
+                        "playControl": play_ctrl_from_device,
+                        "status": inferred_status,
+                    }
                 device_uuids.add(uid)
             self._device_uuids[s_id] = device_uuids
             n_local = len(cache) - len(device_uuids)

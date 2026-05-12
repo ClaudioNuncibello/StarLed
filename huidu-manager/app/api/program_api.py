@@ -119,7 +119,10 @@ class ProgramApi:
         Raises:
             HuiduApiError: Se il gateway restituisce un errore.
         """
-        if not presentations:
+        # Per method=replace, inviamo sempre il payload anche se vuoto:
+        # un replace con data=[] svuota il device e fa diventare lo schermo nero.
+        # Per append/update con lista vuota non ha senso chiamare l'API.
+        if not presentations and method != "replace":
             return True
 
         payload = {

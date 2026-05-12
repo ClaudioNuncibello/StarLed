@@ -15,8 +15,24 @@
                     }
                 }
             ],
-            "status": "disabled",
-            "playControl": null
+            "status": "programmed",
+            "playControl": {
+                "week": {
+                    "enable": "Mon,Tue,Wed,Thu,Fri,Sat,Sun"
+                },
+                "date": [
+                    {
+                        "start": "2020-01-01",
+                        "end": "2099-12-31"
+                    }
+                ],
+                "time": [
+                    {
+                        "start": "08:00:00",
+                        "end": "11:00:00"
+                    }
+                ]
+            }
         },
         "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93": {
             "uuid": "fdf8ee6b-8861-4ae5-805e-ec300ef4bb93",

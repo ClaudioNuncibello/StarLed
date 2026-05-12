@@ -188,10 +188,18 @@ class Sidebar(QWidget):
             
     def set_presentations(self, presentations):
         self.pres_list.clear()
+        STATUS_ICON = {
+            "live": "▶",
+            "programmed": "📅",
+            "disabled": "⏸",
+        }
         for pres in presentations:
-            item = QListWidgetItem(f"> {pres.get('name')}")
+            status = pres.get("status", "live")
+            icon = STATUS_ICON.get(status, "▶")
+            item = QListWidgetItem(f"{icon} {pres.get('name')}")
             item.setData(Qt.ItemDataRole.UserRole, pres.get("uuid"))
             self.pres_list.addItem(item)
+
             
     def set_layers(self, layers):
         self.layer_list.clear()
