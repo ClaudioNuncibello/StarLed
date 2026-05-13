@@ -259,14 +259,28 @@ class ScheduleDialog(QDialog):
                 for r in ranges:
                     parts = r.split("-")
                     if len(parts) == 2:
-                        s, e = parts[0].strip(), parts[1].strip()
-                        if len(s) == 5: s += ":00"
-                        if len(e) == 5: e += ":00"
-                        time_list.append({"start": s, "end": e})
+                        def format_time(t_str):
+                            t_str = t_str.strip()
+                            p = t_str.split(':')
+                            if len(p) == 1 and p[0].isdigit():
+                                return f"{int(p[0]):02d}:00:00"
+                            elif len(p) == 2 and p[0].isdigit() and p[1].isdigit():
+                                return f"{int(p[0]):02d}:{int(p[1]):02d}:00"
+                            elif len(p) >= 3 and all(x.isdigit() for x in p[:3]):
+                                return f"{int(p[0]):02d}:{int(p[1]):02d}:{int(p[2]):02d}"
+                            raise ValueError("Invalid time")
+
+                        try:
+                            s = format_time(parts[0])
+                            e = format_time(parts[1])
+                            time_list.append({"start": s, "end": e})
+                        except ValueError:
+                            pass
             if not time_list:
                 time_list = [{"start": "00:00:00", "end": "23:59:59"}]
 
             p["playControl"] = {
+                "duration": "00:00:10",  # durata slot default (richiesto dal firmware Huidu)
                 "week": {"enable": ",".join(active_days)},
                 "date": [{"start": "2020-01-01", "end": "2099-12-31"}],
                 "time": time_list,
@@ -302,10 +316,24 @@ class ScheduleDialog(QDialog):
             if len(parts) != 2:
                 QMessageBox.warning(self, "Attenzione", "Formato spegnimento non valido. Usare HH:MM-HH:MM")
                 return
-            s = parts[0].strip()
-            e = parts[1].strip()
-            if len(s) == 5: s += ":00"
-            if len(e) == 5: e += ":00"
+
+            def format_time(t_str):
+                t_str = t_str.strip()
+                p = t_str.split(':')
+                if len(p) == 1 and p[0].isdigit():
+                    return f"{int(p[0]):02d}:00:00"
+                elif len(p) == 2 and p[0].isdigit() and p[1].isdigit():
+                    return f"{int(p[0]):02d}:{int(p[1]):02d}:00"
+                elif len(p) >= 3 and all(x.isdigit() for x in p[:3]):
+                    return f"{int(p[0]):02d}:{int(p[1]):02d}:{int(p[2]):02d}"
+                raise ValueError("Invalid time")
+
+            try:
+                s = format_time(parts[0])
+                e = format_time(parts[1])
+            except ValueError:
+                QMessageBox.warning(self, "Attenzione", "Formato orari non valido. Inserire formato HH:MM (es. 08:00 o 8:00).")
+                return
 
             screen_tasks.append({
                 "timeRange": f"{s}~{e}",

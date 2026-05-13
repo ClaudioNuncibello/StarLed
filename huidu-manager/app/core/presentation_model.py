@@ -296,14 +296,36 @@ class DigitalClockItem:
     type: str = field(default="digitalClock", init=False)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializza in formato JSON Huidu."""
+        """Serializza in formato JSON Huidu.
+
+        IMPORTANTE: il firmware Huidu richiede che ``multiLine`` sia una stringa
+        (``"true"``/``"false"``) e che i campi ``format`` dei sub-oggetti
+        date/time/week siano anch'essi stringhe (es. ``"0"``), non tipi Python
+        nativi. Vedere README.en.md §3.2.9 per gli esempi ufficiali.
+        """
+        def _norm_sub(sub: dict) -> dict:
+            """Normalizza un sub-oggetto date/time/week per il firmware."""
+            out = dict(sub)
+            # "format" deve essere stringa
+            if "format" in out:
+                out["format"] = str(out["format"])
+            # "display" deve essere stringa "true"/"false"
+            if "display" in out:
+                val = out["display"]
+                if isinstance(val, bool):
+                    out["display"] = "true" if val else "false"
+                else:
+                    out["display"] = str(val).lower()
+            return out
+
         return {
             "type": self.type,
             "timezone": self.timezone,
-            "multiLine": self.multiLine,
-            "date": dict(self.date),
-            "time": dict(self.time),
-            "week": dict(self.week),
+            # multiLine deve essere stringa per il firmware Huidu
+            "multiLine": "true" if self.multiLine else "false",
+            "date": _norm_sub(self.date),
+            "time": _norm_sub(self.time),
+            "week": _norm_sub(self.week),
         }
 
     @classmethod

@@ -130,10 +130,12 @@ payload = {
 def build_play_control(
     duration_s: int,
     time_ranges: list[tuple[str, str]],   # es. [("09:00:00", "18:00:00")]
-    date_ranges: list[tuple[str, str]],   # es. [("2025-01-01", "2025-12-31")]
+    date_ranges: list[tuple[str, str]],   # es. [("2025-01-01", "2099-12-31")]
     weekdays: list[str]                   # es. ["Mon","Tue","Wed","Thu","Fri"]
 ) -> dict:
     return {
+        # CRITICO: "duration" è obbligatorio — senza di esso il firmware potrebbe
+        # ignorare silenziosamente lo scheduling. Formato HH:MM:SS.
         "duration": f"00:{duration_s//60:02d}:{duration_s%60:02d}",
         "time": [{"start": s, "end": e} for s, e in time_ranges],
         "date": [{"start": s, "end": e} for s, e in date_ranges],

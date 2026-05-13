@@ -206,12 +206,17 @@ Presentation (program)
 {
   "type": "digitalClock",
   "timezone": "+1:00",
-  "multiLine": true,
-  "date": { "format": 0, "color": "#ffffff", "display": "true" },
-  "time": { "format": 0, "color": "#00ff00", "display": "true" },
-  "week": { "format": 0, "color": "#ffff00", "display": "false" }
+  "timeOffset": "",
+  "multiLine": "true",
+  "date": { "format": "2", "color": "#ffffff", "display": "true" },
+  "time": { "format": "0", "color": "#00ff00", "display": "true" },
+  "week": { "format": "0", "color": "#ffff00", "display": "false" },
+  "lunarCalendar": { "display": "false", "color": "#ffffff" }
 }
 ```
+
+> ⚠️ **CRITICO**: `multiLine` e i campi `format` **devono essere stringhe**, NON bool/int Python.
+> Il firmware ignora silenziosamente i tipi sbagliati. Vedere README.en.md §3.2.9.
 
 | `date.format` | Formato |
 |---|---|

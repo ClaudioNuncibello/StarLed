@@ -188,18 +188,20 @@ class ClockDialog(QDialog):
                 "color": self.col_week.current_color.name(),
                 "display": "true" if self.chk_week.isChecked() else "false",
             }
-            # Lunar: campo extra, non parte del modello Huidu ufficiale
-            item_data["lunar"] = {
+            # lunarCalendar: nome corretto secondo specifica API Huidu §3.2.9
+            item_data["lunarCalendar"] = {
                 "display": "true" if self.chk_lunar.isChecked() else "false",
                 "color": self.col_lunar.current_color.name(),
             }
         else:
-            # dialClock — colori lancette
-            item_data["hour_hand_color"] = getattr(self, "col_hour_hand").current_color.name()
-            item_data["minute_hand_color"] = getattr(self, "col_minute_hand").current_color.name()
-            item_data["second_hand_color"] = getattr(self, "col_second_hand").current_color.name()
-            item_data["hour_scale_color"] = getattr(self, "col_hour_scale").current_color.name()
-            item_data["minute_scale_color"] = getattr(self, "col_minute_scale").current_color.name()
+            # dialClock — chiavi stile compatibili API Huidu §3.2.10
+            item_data["style"] = {
+                "hourHandColor": getattr(self, "col_hour_hand").current_color.name(),
+                "minuteHandColor": getattr(self, "col_minute_hand").current_color.name(),
+                "secondHandColor": getattr(self, "col_second_hand").current_color.name(),
+                "hourScaleColor": getattr(self, "col_hour_scale").current_color.name(),
+                "minuteScaleColor": getattr(self, "col_minute_scale").current_color.name(),
+            }
 
         self.item_created.emit(item_data)
         self.accept()

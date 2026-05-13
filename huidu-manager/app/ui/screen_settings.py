@@ -157,6 +157,7 @@ class ScreenSettingsDialog(QDialog):
         grid.addWidget(QLabel(self.props.get('version.app', 'N/D')), 3, 1)
         
         layout.addLayout(grid)
+        
         layout.addStretch()
 
     def on_slider_change(self, label, value):
@@ -204,7 +205,7 @@ class ScreenSettingsDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self._run_async("reboot")
             self.accept()
-            
+
     def _run_async(self, action, *args):
         worker = DeviceWorker(action, self.manager, self.device_id, *args)
         self._workers.add(worker)

@@ -403,13 +403,6 @@ class ScheduleSyncWorker(QThread):
 
     def run(self):
         try:
-            from datetime import datetime
-            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            try:
-                self.manager.device_api.set_device_property(self.device_id, time=time_str)
-            except Exception as e:
-                print(f"Errore sync orologio: {e}")
-
             # 1. Aggiorna accensione/spegnimento schermo
             if self.screen_tasks is not None:
                 self.manager.device_api.set_scheduled_task(self.device_id, {"screen": self.screen_tasks})
